@@ -1,0 +1,25 @@
+{
+  "name": "talentwale-whatsapp-bot",
+  "version": "1.0.0",
+  "description": "Talentwale WhatsApp Career Assistant Bot with Multi-AI Fallback",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "fetch-industries": "node fetch_industries.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.13.4",
+    "cors": "^2.8.6",
+    "dotenv": "^16.3.1",
+    "express": "^5.2.1",
+    "multer": "^2.1.0",
+    "nodemailer": "^8.0.1",
+    "openai": "^6.18.0",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
+    "socket.io": "^4.8.3",
+    "whatsapp-web.js": "^1.23.0",
+    "xlsx": "^0.18.5"
+  }
+}

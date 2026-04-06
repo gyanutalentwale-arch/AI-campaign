@@ -1,0 +1,9 @@
+{
+  "template": "Hi ```{{full_name}}``` 👋\n\nYour profile looks perfect for *{{job_title}} roles in {{City}}*.\n\n🎯 *Direct HR Interview* Opportunities Available\nfor candidates with *{{years_of_experience}}* of experience in *{{Department}}.*\n\n⚡ _Fast Hiring – Limited Openings_\n\n```You can apply in just 2 minutes ```👇\n\n1️⃣ *FREE Quick Registration*\n👉 https://talentwale.com/candidate-registration\n\n2️⃣ _Or simply send your updated Resume/CV here on WhatsApp_\n\n📱 ```Download App:```\n*Android:*  https://bit.ly/4sLXxdF\n*iOS:*     https://apple.co/4rkRpaV\n\n👉 Reply *“YES”* and I’ll help you get started immediately.",
+  "minDelaySec": 51,
+  "maxDelaySec": 76,
+  "batchSize": 11,
+  "useAI": true,
+  "aiAuthMode": "google_oauth",
+  "imageCaption": ""
+}
