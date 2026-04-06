@@ -2,5 +2,7 @@ node_modules/
 .env
 whatsapp_session/
 .wwebjs_cache/
-bot_usage.log
-data/runtime_state.json
+*.log
+data/
+*_preset.json
+*_usage_state.json
