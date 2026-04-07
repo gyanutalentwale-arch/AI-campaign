@@ -93,11 +93,13 @@ loadGoogleAiAuthStatus();
 // --- Socket Events ------------------------------------------------------------
 socket.on('init', (data) => {
   updateStatus(data.botStatus);
+  updateVerifierStatus(data.botVerifierStatus || 'stopped');
   updateStats(data.stats);
   updateEmailStats(data.emailStats);
   data.logs.forEach(addLogEntry);
   updateUsers(data.activeUsers);
   if (data.qrCode) showQR(data.qrCode);
+  if (data.verifierQrCode) showVerifierQR(data.verifierQrCode);
   if (data.autoReply !== undefined) setAutoReplyUI(data.autoReply);
   if (data.aiAuth) renderGoogleAiAuth(data.aiAuth);
   if (!campaignPresetLoaded) loadCampaignPreset();
@@ -110,6 +112,8 @@ socket.on('autoreply', setAutoReplyUI);
 socket.on('ai_auth_status', renderGoogleAiAuth);
 
 socket.on('log', addLogEntry);
+socket.on('status_verifier', updateVerifierStatus);
+socket.on('qr_verifier', showVerifierQR);
 socket.on('status', updateStatus);
 socket.on('stats', updateStats);
 socket.on('email_stats', updateEmailStats);
@@ -1736,3 +1740,46 @@ function toast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
+
+let botVerifierStatus = 'stopped';
+function updateVerifierStatus(status) {
+  botVerifierStatus = status;
+  const badge = document.getElementById('status-badge-verifier');
+  const text = document.getElementById('status-text-verifier');
+  const connectBtn = document.getElementById('btn-verifier-start');
+  if(!badge) return;
+  badge.className = 'status-badge ' + status;
+  const labels = { ready: 'Ready', stopped: 'Stopped', starting: 'Starting...', qr: 'Waiting QR' };
+  text.textContent = "Verifier: " + (labels[status] || status);
+  if (connectBtn) {
+    connectBtn.disabled = status !== 'stopped';
+    connectBtn.textContent = status === 'ready' ? 'Verifier Connected' : status === 'starting' ? 'Connecting...' : status === 'qr' ? 'Waiting QR' : 'Connect Verifier';
+  }
+  document.getElementById('btn-verifier-stop').disabled = status === 'stopped';
+  if (status !== 'qr') document.getElementById('qr-verifier-container').style.display = 'none';
+}
+
+function showVerifierQR(qrDataUrl) {
+  const c = document.getElementById('qr-verifier-container');
+  c.style.display = 'block';
+  document.getElementById('qr-verifier-img').src = qrDataUrl;
+  updateVerifierStatus('qr');
+}
+
+function connectVerifier() {
+  if (botVerifierStatus === 'ready') { toast('Verifier already connected'); return; }
+  fetch('/api/botVerifier/start', { method: 'POST' }).then(r => r.json()).then(d => {
+    if (!d.ok) toast(d.msg || 'Start failed');
+  });
+}
+function botVerifierControl(action) {
+  fetch('/api/botVerifier/' + action, { method: 'POST' }).then(r => r.json()).then(d => {
+    if (!d.ok) toast(d.msg || action + ' failed');
+  });
+}
+function botVerifierLogout() {
+  if (!confirm('Logout verifier session?')) return;
+  fetch('/api/botVerifier/logout', { method: 'POST' }).then(r => r.json()).then(d => {
+    toast(d.msg || 'Logged out');
+  });
+}

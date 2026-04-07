@@ -72,10 +72,20 @@
       </div>
 
       <div class="controls">
-        <button class="btn btn-green" id="btn-start" onclick="connectWhatsApp()">WhatsApp Connect</button>
-        <button class="btn btn-red" id="btn-stop" onclick="botControl('stop')">Stop Bot</button>
-        <button class="btn btn-yellow" id="btn-restart" onclick="botControl('restart')">Restart</button>
-        <button class="btn btn-ghost" id="btn-logout" onclick="botLogout()">Logout Session</button>
+        <div style="display:flex;flex-direction:column;gap:5px;">
+        <div style="display:flex;gap:5px;flex-wrap:wrap;">
+          <button class="btn btn-green" id="btn-start" onclick="connectWhatsApp()">Connect Sender</button>
+          <button class="btn btn-red" id="btn-stop" onclick="botControl('stop')">Stop Sender</button>
+          <button class="btn btn-yellow" id="btn-restart" onclick="botControl('restart')">Restart Sender</button>
+          <button class="btn btn-ghost" id="btn-logout" onclick="botLogout()">Logout Sender</button>
+        </div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;">
+          <button class="btn btn-green" id="btn-verifier-start" onclick="connectVerifier()">Connect Verifier</button>
+          <button class="btn btn-red" id="btn-verifier-stop" onclick="botVerifierControl('stop')">Stop Verifier</button>
+          <button class="btn btn-yellow" id="btn-verifier-restart" onclick="botVerifierControl('restart')">Restart Verifier</button>
+          <button class="btn btn-ghost" id="btn-verifier-logout" onclick="botVerifierLogout()">Logout Verifier</button>
+        </div>
+        </div>
       </div>
 
       <div class="card" style="padding:18px;margin-bottom:24px">
@@ -120,9 +130,12 @@
       </div>
 
       <div id="qr-container">
-        <p style="margin-bottom:12px;color:var(--text);font-weight:600;">Scan QR Code</p>
+        <p style="margin-bottom:12px;color:var(--text);font-weight:600;">Sender QR Code</p>
         <img id="qr-img" src="" alt="QR Code" />
-        <p>WhatsApp -> Linked Devices -> Link a Device</p>
+      </div>
+      <div id="qr-verifier-container" style="display:none;margin-top:10px;">
+        <p style="margin-bottom:12px;color:var(--text);font-weight:600;">Verifier QR Code</p>
+        <img id="qr-verifier-img" src="" alt="Verifier QR Code" />
       </div>
     </div>
 

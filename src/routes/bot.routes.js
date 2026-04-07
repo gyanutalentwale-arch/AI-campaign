@@ -51,7 +51,7 @@ app.post("/api/bot/restart", async (req, res) => {
   }
 });
 
-app.post("/api/bot/logout", async (req, res) => {
+  app.post("/api/bot/logout", async (req, res) => {
   try {
     addLog("info", "Logging out WhatsApp session...");
     // Logout clears the session; next initialize() will show QR
@@ -79,6 +79,82 @@ app.post("/api/bot/logout", async (req, res) => {
       ok: true,
       msg: "Logged out. Click WhatsApp Connect to scan QR again.",
     });
+  } catch (e) {
+    res.status(500).json({ ok: false, msg: e.message });
+  }
+});
+
+app.post("/api/botVerifier/start", async (req, res) => {
+  if (state.botVerifierStatus !== "stopped")
+    return res.json({ ok: false, msg: "Verifier already running" });
+  if (!state.botVerifierInitFn)
+    return res.status(500).json({ ok: false, msg: "Verifier not ready" });
+  try {
+    state.botVerifierStatus = "starting";
+    io.emit("status_verifier", "starting");
+    addLog("info", "Verifier starting...");
+    state.botVerifierInitFn();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, msg: e.message });
+  }
+});
+
+app.post("/api/botVerifier/stop", async (req, res) => {
+  if (!state.botVerifierDestroyFn)
+    return res.status(500).json({ ok: false, msg: "Verifier not ready" });
+  try {
+    addLog("info", "Verifier stopping...");
+    await state.botVerifierDestroyFn();
+    state.botVerifierStatus = "stopped";
+    io.emit("status_verifier", "stopped");
+    res.json({ ok: true });
+  } catch (e) {
+    state.botVerifierStatus = "stopped";
+    io.emit("status_verifier", "stopped");
+    res.json({ ok: true });
+  }
+});
+
+app.post("/api/botVerifier/restart", async (req, res) => {
+  if (!state.botVerifierDestroyFn || !state.botVerifierInitFn)
+    return res.status(500).json({ ok: false, msg: "Verifier not ready" });
+  try {
+    addLog("info", "Verifier restarting...");
+    try {
+      await state.botVerifierDestroyFn();
+    } catch (_) {}
+    state.botVerifierStatus = "starting";
+    io.emit("status_verifier", "starting");
+    setTimeout(() => {
+      state.botVerifierInitFn();
+    }, 2000);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, msg: e.message });
+  }
+});
+
+app.post("/api/botVerifier/logout", async (req, res) => {
+  try {
+    addLog("info", "Logging out Verifier session...");
+    if (state.botVerifierClient) {
+      try {
+        await state.botVerifierClient.logout();
+      } catch (_) {}
+      try {
+        await state.botVerifierClient.destroy();
+      } catch (_) {}
+    }
+    const sessionPath = path.join(process.cwd(), "whatsapp_session_verifier");
+    if (fs.existsSync(sessionPath)) {
+      fs.rmSync(sessionPath, { recursive: true, force: true });
+      addLog("info", "Verifier Session data cleared");
+    }
+    state.botVerifierStatus = "stopped";
+    state.verifierQrCode = null;
+    io.emit("status_verifier", "stopped");
+    res.json({ ok: true, msg: "Verifier Logged out. Click Connect Verifier to scan QR again." });
   } catch (e) {
     res.status(500).json({ ok: false, msg: e.message });
   }

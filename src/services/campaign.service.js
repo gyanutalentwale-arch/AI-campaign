@@ -1022,8 +1022,10 @@ async function runCampaignLoop(id, campaign, payload) {
           continue;
         }
 
+        // 1st login (Verifier) se number verify hoga
+        const verifier = state.botVerifierClient || state.botClient; // fallback if verifier not running
         const verification = await verifyWhatsAppRecipient(
-          state.botClient,
+          verifier,
           waId,
         );
         if (!verification.registered) {
