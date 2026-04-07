@@ -1817,9 +1817,15 @@ function setVerifyParsedInfo(message, tone = 'success') {
 
 function resetVerifyDownloadState() {
   const dlBtn = document.getElementById('btn-verify-download');
-  if (!dlBtn) return;
-  dlBtn.style.display = 'none';
-  dlBtn.href = '#';
+  const invalidDlBtn = document.getElementById('btn-verify-download-invalid');
+  if (dlBtn) {
+    dlBtn.style.display = 'none';
+    dlBtn.href = '#';
+  }
+  if (invalidDlBtn) {
+    invalidDlBtn.style.display = 'none';
+    invalidDlBtn.href = '#';
+  }
 }
 
 function setVerifyIdleState() {
@@ -1865,12 +1871,21 @@ function applyVerifierProgress(job) {
   document.getElementById('verify-progress-fill').style.width = pct + '%';
 
   const dlBtn = document.getElementById('btn-verify-download');
+  const invalidDlBtn = document.getElementById('btn-verify-download-invalid');
   if ((job.status === 'done' || job.status === 'stopped') && job.valid > 0) {
     dlBtn.style.display = 'inline-block';
     dlBtn.href = '/api/verifier/log/' + job.id;
   } else {
     dlBtn.style.display = 'none';
     dlBtn.href = '#';
+  }
+
+  if ((job.status === 'done' || job.status === 'stopped') && ((job.invalid || 0) + (job.failed || 0)) > 0) {
+    invalidDlBtn.style.display = 'inline-block';
+    invalidDlBtn.href = '/api/verifier/log/' + job.id + '?type=invalid';
+  } else {
+    invalidDlBtn.style.display = 'none';
+    invalidDlBtn.href = '#';
   }
 }
 
