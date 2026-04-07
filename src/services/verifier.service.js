@@ -1,7 +1,13 @@
 const axios = require('axios');
 const XLSX = require('xlsx');
+const createTalentwaleCandidateService = require("./talentwale-candidate.service");
 
-module.exports = function createVerifierService({ io, state, addLog }) {
+module.exports = function createVerifierService({
+  io,
+  state,
+  addLog,
+  talentwaleCandidateService = createTalentwaleCandidateService({ addLog }),
+}) {
   const jobs = new Map();
 
   function createHttpError(status, message) {
@@ -138,9 +144,10 @@ module.exports = function createVerifierService({ io, state, addLog }) {
       status: job.status,
       total: job.total,
       valid: job.valid,
+      skipped: job.skipped,
       invalid: job.invalid,
       failed: job.failed,
-      processed: job.valid + job.invalid + job.failed
+      processed: job.valid + job.skipped + job.invalid + job.failed
     });
   }
 
@@ -154,8 +161,9 @@ module.exports = function createVerifierService({ io, state, addLog }) {
     return null;
   }
 
-  async function runJobLoop(id, job, contacts) {
+  async function runJobLoop(id, job, contacts, options = {}) {
     addLog('info', `Bulk verification started for ${contacts.length} numbers.`);
+    const { useTalentwaleVerification = false, talentwaleSession = null } = options;
     
     for (const contact of contacts) {
       if (job.status === "stopped") {
@@ -165,28 +173,70 @@ module.exports = function createVerifierService({ io, state, addLog }) {
 
       const numCol = Object.keys(contact).find(k => /number|phone|mobile|contact|whatsapp|cell|no\b|num/i.test(k)) || Object.keys(contact)[0];
       const rawNum = contact[numCol];
+      const normalizedNum = normalizeRawPhoneDigits(rawNum);
       const waId = toWAId(rawNum);
 
-      const verifierClient = getReadyVerifierClient();
-      if (!verifierClient) {
-        job.status = "stopped";
-        addLog('error', 'Verifier stopped - WhatsApp not connected.');
-        emitJobProgress(id, job);
-        break;
-      }
-
       try {
+        if (!normalizedNum || !waId) {
+          job.invalid++;
+          job.invalidContacts.push({
+            ...contact,
+            Verification_Status: "Invalid",
+            Verification_Error: "Invalid phone number",
+          });
+          emitJobProgress(id, job);
+          continue;
+        }
+
+        if (useTalentwaleVerification && talentwaleSession) {
+          const foundInTalentwale = await talentwaleSession.hasCandidate(normalizedNum);
+          if (foundInTalentwale) {
+            job.skipped++;
+            job.invalidContacts.push({
+              ...contact,
+              Verification_Status: "Skipped",
+              Talentwale_Status: "Found",
+              Verification_Error: "Found in Talentwale (Phone)",
+            });
+            addLog("warn", `Skipped ${rawNum} - found in Talentwale.`);
+            emitJobProgress(id, job);
+            continue;
+          }
+        }
+
+        const verifierClient = getReadyVerifierClient();
+        if (!verifierClient) {
+          job.status = "stopped";
+          addLog('error', 'Verifier stopped - WhatsApp not connected.');
+          emitJobProgress(id, job);
+          break;
+        }
+
         const verification = await verifyWhatsAppRecipient(verifierClient, waId);
         if (verification.registered) {
           job.valid++;
-          job.cleanContacts.push(contact);
+          job.cleanContacts.push({
+            ...contact,
+            Verification_Status: "Valid",
+            WhatsApp_Status: "Available",
+            ...(useTalentwaleVerification ? { Talentwale_Status: "Not Found" } : {}),
+          });
         } else {
           job.invalid++;
-          job.invalidContacts.push({ ...contact, Verification_Error: "Not on WhatsApp" });
+          job.invalidContacts.push({
+            ...contact,
+            Verification_Status: "Invalid",
+            ...(useTalentwaleVerification ? { Talentwale_Status: "Not Found" } : {}),
+            Verification_Error: "Not on WhatsApp",
+          });
         }
       } catch (err) {
         job.failed++;
-        job.invalidContacts.push({ ...contact, Verification_Error: `Failed: ${err.message}` });
+        job.invalidContacts.push({
+          ...contact,
+          Verification_Status: "Failed",
+          Verification_Error: `Failed: ${err.message}`,
+        });
         addLog('warn', `Verification failed for ${rawNum}: ${err.message}`);
       }
 
@@ -203,7 +253,21 @@ module.exports = function createVerifierService({ io, state, addLog }) {
     if (state.activeVerifierId === id) state.activeVerifierId = null;
   }
 
-  function startJob(contacts) {
+  function normalizeStartPayload(input) {
+    if (Array.isArray(input)) {
+      return {
+        contacts: input,
+        useTalentwaleVerification: false,
+      };
+    }
+    return {
+      contacts: Array.isArray(input?.contacts) ? input.contacts : [],
+      useTalentwaleVerification: !!input?.useTalentwaleVerification,
+    };
+  }
+
+  async function startJob(input) {
+    const { contacts, useTalentwaleVerification } = normalizeStartPayload(input);
     if (!Array.isArray(contacts) || !contacts.length) {
       throw createHttpError(400, "No contacts provided");
     }
@@ -217,21 +281,35 @@ module.exports = function createVerifierService({ io, state, addLog }) {
       throw createHttpError(400, "Connect WhatsApp sender or verifier before starting verification.");
     }
 
+    let talentwaleSession = null;
+    if (useTalentwaleVerification) {
+      try {
+        talentwaleSession = await talentwaleCandidateService.createSession();
+      } catch (error) {
+        throw createHttpError(500, `Talentwale verification login failed: ${error.message}`);
+      }
+    }
+
     const id = Date.now().toString();
     const job = {
       id,
       status: "running",
       total: contacts.length,
       valid: 0,
+      skipped: 0,
       invalid: 0,
       failed: 0,
+      useTalentwaleVerification,
       cleanContacts: [],
       invalidContacts: [],
     };
     jobs.set(id, job);
     state.activeVerifierId = id;
 
-    void runJobLoop(id, job, contacts);
+    void runJobLoop(id, job, contacts, {
+      useTalentwaleVerification,
+      talentwaleSession,
+    });
     return { id };
   }
 
@@ -253,9 +331,11 @@ module.exports = function createVerifierService({ io, state, addLog }) {
         status: job.status,
         total: job.total,
         valid: job.valid,
+        skipped: job.skipped,
         invalid: job.invalid,
         failed: job.failed,
-        processed: job.valid + job.invalid + job.failed
+        processed: job.valid + job.skipped + job.invalid + job.failed,
+        useTalentwaleVerification: !!job.useTalentwaleVerification,
       }
     };
   }

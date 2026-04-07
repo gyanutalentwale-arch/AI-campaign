@@ -21,9 +21,9 @@ module.exports = function createVerifierController(verifierService) {
       }
     },
 
-    startJob(req, res) {
+    async startJob(req, res) {
       try {
-        res.json(verifierService.startJob(req.body?.contacts));
+        res.json(await verifierService.startJob(req.body || {}));
       } catch (error) {
         sendError(res, error);
       }

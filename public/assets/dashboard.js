@@ -1797,6 +1797,7 @@ const btnVerifyLoadSheet = document.getElementById('btn-verify-load-sheet');
 const verifyFileInput = document.getElementById('verify-file');
 const btnVerifyStart = document.getElementById('btn-verify-start');
 const btnVerifyStop = document.getElementById('btn-verify-stop');
+const verifyUseTalentwale = document.getElementById('verify-use-talentwale');
 
 function setVerifyParsedInfo(message, tone = 'success') {
   const el = document.getElementById('verify-parsed-info');
@@ -1864,6 +1865,7 @@ function applyVerifierProgress(job) {
 
   document.getElementById('verify-stat-total').textContent = job.total || 0;
   document.getElementById('verify-stat-valid').textContent = job.valid || 0;
+  document.getElementById('verify-stat-skipped').textContent = job.skipped || 0;
   document.getElementById('verify-stat-invalid').textContent = job.invalid || 0;
   document.getElementById('verify-stat-failed').textContent = job.failed || 0;
 
@@ -1880,7 +1882,7 @@ function applyVerifierProgress(job) {
     dlBtn.href = '#';
   }
 
-  if ((job.status === 'done' || job.status === 'stopped') && ((job.invalid || 0) + (job.failed || 0)) > 0) {
+  if ((job.status === 'done' || job.status === 'stopped') && ((job.skipped || 0) + (job.invalid || 0) + (job.failed || 0)) > 0) {
     invalidDlBtn.style.display = 'inline-block';
     invalidDlBtn.href = '/api/verifier/log/' + job.id + '?type=invalid';
   } else {
@@ -1967,7 +1969,12 @@ if (btnVerifyStart) {
     btnVerifyStart.disabled = true;
     resetVerifyDownloadState();
     fetch('/api/verifier/start', {
-      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ contacts: verifyParsedContacts })
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        contacts: verifyParsedContacts,
+        useTalentwaleVerification: !!verifyUseTalentwale?.checked
+      })
     }).then(r => r.json()).then(d => {
       if (d.error) {
         btnVerifyStart.disabled = false;

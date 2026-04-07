@@ -539,6 +539,18 @@
     </div>
     
     <div id="verify-parsed-info" class="hint" style="margin-bottom:15px;color:var(--green);display:none;font-weight:600;font-size:13px;"></div>
+
+    <div class="form-group" style="margin-bottom:8px;">
+      <label style="display:flex;align-items:flex-start;gap:10px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;">
+        <input type="checkbox" id="verify-use-talentwale" style="margin-top:2px;">
+        <span>
+          Talentwale Verification
+          <span style="display:block;font-size:11px;font-weight:500;color:var(--muted);margin-top:2px;">
+            Pehle Talentwale candidate list me number search hoga. Wahan mil gaya to skip, warna WhatsApp availability check hogi.
+          </span>
+        </span>
+      </label>
+    </div>
     
     <div class="controls" style="margin-top:20px;">
       <button class="btn btn-green" id="btn-verify-start" disabled>Start Verification</button>
@@ -551,15 +563,16 @@
     <div style="background:var(--border);border-radius:4px;height:8px;overflow:hidden;margin-bottom:12px;">
       <div id="verify-progress-fill" style="background:var(--green);height:100%;width:0%;transition:width .4s;"></div>
     </div>
-    <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:14px;font-weight:600;">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:14px;font-weight:600;">
       <span style="color:var(--muted)">Total: <b id="verify-stat-total" style="color:var(--text)">0</b></span>
       <span style="color:var(--green)">Valid: <b id="verify-stat-valid">0</b></span>
+      <span style="color:#b7791f">Skipped: <b id="verify-stat-skipped">0</b></span>
       <span style="color:var(--red)">Invalid: <b id="verify-stat-invalid">0</b></span>
       <span style="color:var(--yellow)">Failed: <b id="verify-stat-failed">0</b></span>
     </div>
     <div style="margin-top:20px;text-align:center;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
        <a class="btn btn-purple" id="btn-verify-download" style="display:none;text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:600;" href="#" target="_blank">Download Valid Numbers</a>
-       <a class="btn btn-red" id="btn-verify-download-invalid" style="display:none;text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:600;" href="#" target="_blank">Download Invalid Records</a>
+       <a class="btn btn-red" id="btn-verify-download-invalid" style="display:none;text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:600;" href="#" target="_blank">Download Invalid/Skipped Records</a>
     </div>
   </div>
 </div>
