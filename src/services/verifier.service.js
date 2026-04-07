@@ -189,13 +189,22 @@ module.exports = function createVerifierService({
         }
 
         if (useTalentwaleVerification && talentwaleSession) {
-          const foundInTalentwale = await talentwaleSession.hasCandidate(normalizedNum);
-          if (foundInTalentwale) {
+          const talentwaleMatch = typeof talentwaleSession.findCandidate === "function"
+            ? await talentwaleSession.findCandidate(normalizedNum)
+            : (await talentwaleSession.hasCandidate(normalizedNum))
+              ? { found: true, matchType: "phone", candidate: {} }
+              : null;
+          if (talentwaleMatch?.found) {
             job.skipped++;
             job.invalidContacts.push({
               ...contact,
               Verification_Status: "Skipped",
               Talentwale_Status: "Found",
+              Talentwale_Match_Type: talentwaleMatch.matchType || "phone",
+              Talentwale_Candidate_Id: talentwaleMatch.candidate?.id || "",
+              Talentwale_Candidate_Name: talentwaleMatch.candidate?.name || "",
+              Talentwale_Candidate_Phone: talentwaleMatch.candidate?.phone || normalizedNum,
+              Talentwale_Candidate_Email: talentwaleMatch.candidate?.email || "",
               Verification_Error: "Found in Talentwale (Phone)",
             });
             addLog("warn", `Skipped ${rawNum} - found in Talentwale.`);
@@ -206,6 +215,19 @@ module.exports = function createVerifierService({
 
         const verifierClient = getReadyVerifierClient();
         if (!verifierClient) {
+          if (useTalentwaleVerification) {
+            job.failed++;
+            job.invalidContacts.push({
+              ...contact,
+              Verification_Status: "Failed",
+              Talentwale_Status: "Not Found",
+              Verification_Error: "WhatsApp not connected for fallback verification",
+            });
+            addLog("warn", `Verification failed for ${rawNum}: WhatsApp not connected for fallback verification`);
+            emitJobProgress(id, job);
+            continue;
+          }
+
           job.status = "stopped";
           addLog('error', 'Verifier stopped - WhatsApp not connected.');
           emitJobProgress(id, job);
@@ -277,7 +299,7 @@ module.exports = function createVerifierService({
       throw createHttpError(409, "A verification job is already running.");
     }
 
-    if (!getReadyVerifierClient()) {
+    if (!useTalentwaleVerification && !getReadyVerifierClient()) {
       throw createHttpError(400, "Connect WhatsApp sender or verifier before starting verification.");
     }
 
