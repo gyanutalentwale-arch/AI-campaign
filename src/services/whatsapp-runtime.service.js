@@ -503,11 +503,19 @@ const clientVerifier = new Client({
 // Register bot control functions for dashboard
 state.botInitFn    = () => client.initialize();
 state.botDestroyFn = () => client.destroy();
+state.botLogoutFn  = async () => {
+    try { await client.logout(); } catch (_) {}
+    try { await client.destroy(); } catch (_) {}
+};
 state.botClient    = null; // set after ready
 state.processUnreadFn = (source = 'manual') => processUnreadMessages(source);
 
 state.botVerifierInitFn    = () => clientVerifier.initialize();
 state.botVerifierDestroyFn = () => clientVerifier.destroy();
+state.botVerifierLogoutFn  = async () => {
+    try { await clientVerifier.logout(); } catch (_) {}
+    try { await clientVerifier.destroy(); } catch (_) {}
+};
 state.botVerifierClient    = null; // set after ready
 
 // QR Code
