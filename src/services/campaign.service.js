@@ -879,6 +879,46 @@ async function runCampaignLoop(id, campaign, payload) {
     );
   }
 
+  // --- Login to Talentwale API ---
+  let talentwaleToken = null;
+  try {
+    const loginRes = await axios.post("https://production.talentwale.com/api/login", {
+      email: "Dataentry3.intelliworkz@gmail.com",
+      password: "Gyanu@123",
+      role: "admin"
+    });
+    if (loginRes.data && loginRes.data.api_token) {
+      talentwaleToken = loginRes.data.api_token;
+      addLog("info", "Connected to Talentwale API successfully.");
+    } else {
+      addLog("warn", "Talentwale API login failed: No token in response.");
+    }
+  } catch (error) {
+    addLog("warn", `Talentwale API login failed: ${error.message}`);
+  }
+
+  const checkTalentwaleCandidate = async (searchQuery) => {
+    if (!talentwaleToken || !searchQuery) return false;
+    try {
+      const res = await axios.post("https://production.talentwale.com/api/admin/candidate/list", {
+        page: 1,
+        startDate: "",
+        endDate: "",
+        registrationBy: "",
+        limit: 10,
+        search: String(searchQuery)
+      }, {
+        headers: { "authorization": `Bearer ${talentwaleToken}` }
+      });
+      if (res.data && res.data.data && res.data.data.length > 0) {
+        return true;
+      }
+    } catch (e) {
+       addLog("warn", `Talentwale search error for ${searchQuery}: ${e.message}`);
+    }
+    return false;
+  };
+
   // AI uses a normalized template to avoid broken code-style placeholders.
   const aiTemplate = normalizeTemplateForAI(template);
   const templateWithPlaceholders = aiTemplate.replace(
@@ -932,7 +972,38 @@ async function runCampaignLoop(id, campaign, payload) {
         /number|phone|mobile|contact|whatsapp|cell|ph\b|no\b|num/i.test(k),
       );
       const rawNum = numKey ? contact[numKey] : "";
+      
+      const emailKey = Object.keys(contact).find((k) =>
+        /email|e-mail|mail/i.test(k)
+      );
+      const rawEmail = emailKey ? contact[emailKey] : "";
+
       addLog("info", `[QUEUE] -> ${rawNum} | "${msg.substring(0, 50)}"`);
+
+      // Check Talentwale condition BEFORE doing WhatsApp stuff
+      if (talentwaleToken) {
+        let skipReason = null;
+        if (rawNum && await checkTalentwaleCandidate(rawNum)) {
+          skipReason = `Found in Talentwale (Phone)`;
+        } else if (rawEmail && await checkTalentwaleCandidate(rawEmail)) {
+          skipReason = `Found in Talentwale (Email)`;
+        }
+
+        if (skipReason) {
+          campaign.skipped = (campaign.skipped || 0) + 1;
+          campaign.log.push({
+            ...contact,
+            _status: "skipped",
+            _error: skipReason,
+          });
+          addLog("warn", `Skipped -> ${rawNum || rawEmail} - ${skipReason}`);
+          inBatch++;
+          emitCampaignProgress(id, campaign);
+          const isLast = getCampaignProcessedCount(campaign) >= campaign.total;
+          if (isLast || campaign.status === "stopped") break;
+          continue;
+        }
+      }
 
       try {
         let waId = toWAId(rawNum);
@@ -1247,7 +1318,7 @@ function getCampaignLog(id) {
   if (!campaign || !campaign.log.length) {
     throw createHttpError(404, "Not found");
   }
-  const headers = [...new Set(campaign.log.flatMap((r) => Object.keys(r)))];
+  const headers = [...new Set(campaign.log.flatMap((r) => Object.keys(r)))].filter(h => h !== '_msg');
   const csv = [
     headers.join(","),
     ...campaign.log.map((r) =>
