@@ -2,34 +2,16 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const OpenAI = require('openai');
 const fs = require('fs');
-const axios = require('axios');
 const QRCode = require('qrcode');
-const { INDUSTRY_MAP, tools, getSystemInstructions } = require('./botConfig');
+const { tools, getSystemInstructions } = require('../../botConfig');
 const {
     isGoogleOauthSessionValid,
     runGeminiOAuthChat,
-} = require('./src/services/gemini-oauth.service');
+} = require('./gemini-oauth.service');
 require('dotenv').config();
 
 // â”€â”€â”€ Dashboard Server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const { io, state, addLog, server } = require('./server');
-const PORT = process.env.DASHBOARD_PORT || 3000;
-// Auto-retry next port if busy (EADDRINUSE on fast restart)
-function startServer(port, retries = 5) {
-    server.listen(port, () => {
-        addLog('info', `Dashboard running at http://localhost:${port}`);
-    });
-    server.on('error', (err) => {
-        if (err.code === 'EADDRINUSE' && retries > 0) {
-            addLog('warn', `Port ${port} busy, retrying on ${port + 1}...`);
-            server.close();
-            setTimeout(() => startServer(port + 1, retries - 1), 1000);
-        } else {
-            addLog('error', `Server error: ${err.message}`);
-        }
-    });
-}
-startServer(PORT);
+module.exports = function createWhatsAppRuntime({ io, state, addLog }) {
 
 function stringifyLogArg(arg) {
     if (typeof arg === 'string') return arg;
@@ -150,7 +132,7 @@ function buildGeminiSystemInstruction(userName) {
     return { role: "system", parts: [{ text: sysText }] };
 }
 
-const { searchJobsFromApi } = require("./src/services/jobs.service");
+const { searchJobsFromApi } = require("./jobs.service");
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
@@ -260,7 +242,7 @@ async function processMessageQueue() {
 }
 
 // In-memory stores
-const chatHistory = new Map();
+const chatHistory = state.chatHistory;
 const userNames = new Map();
 const processedIncomingMessages = new Map();
 const INCOMING_MESSAGE_DEDUPE_TTL = 10 * 60 * 1000;
@@ -871,9 +853,15 @@ async function handleMessage(msg, chat, userId, userName) {
 // Keep bot idle on program start. Connect from dashboard button when needed.
 state.botStatus = 'stopped';
 io.emit('status', 'stopped');
+state.botVerifierStatus = 'stopped';
+io.emit('status_verifier', 'stopped');
 
-
-
-
-
-
+return {
+    client,
+    clientVerifier,
+    shutdown: async () => {
+        try { await client.destroy(); } catch (_) {}
+        try { await clientVerifier.destroy(); } catch (_) {}
+    }
+};
+};
