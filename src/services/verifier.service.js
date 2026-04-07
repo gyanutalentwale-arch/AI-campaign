@@ -112,6 +112,14 @@ module.exports = function createVerifierService({
     }
   }
 
+  function findContactColumn(contact, pattern) {
+    return Object.keys(contact || {}).find((key) => pattern.test(key));
+  }
+
+  function normalizeEmailValue(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
   function resolveWaIdFromLookup(result, fallbackWaId) {
     if (!result) return fallbackWaId;
     if (typeof result === "string") return result;
@@ -171,12 +179,43 @@ module.exports = function createVerifierService({
         break;
       }
 
-      const numCol = Object.keys(contact).find(k => /number|phone|mobile|contact|whatsapp|cell|no\b|num/i.test(k)) || Object.keys(contact)[0];
+      const numCol = findContactColumn(contact, /number|phone|mobile|contact|whatsapp|cell|no\b|num/i) || Object.keys(contact)[0];
+      const emailCol = findContactColumn(contact, /email|mail/i);
       const rawNum = contact[numCol];
+      const rawEmail = emailCol ? contact[emailCol] : "";
       const normalizedNum = normalizeRawPhoneDigits(rawNum);
+      const last10Digits = normalizedNum.slice(-10);
+      const normalizedEmail = normalizeEmailValue(rawEmail);
       const waId = toWAId(rawNum);
 
       try {
+        if (useTalentwaleVerification && talentwaleSession) {
+          const talentwaleMatch = typeof talentwaleSession.findCandidate === "function"
+            ? await talentwaleSession.findCandidate({ phone: last10Digits, email: normalizedEmail })
+            : (await talentwaleSession.hasCandidate({ phone: last10Digits, email: normalizedEmail }))
+              ? { found: true, matchType: normalizedEmail ? "phone_or_email" : "phone", candidate: {} }
+              : null;
+          if (talentwaleMatch?.found) {
+            const matchType = talentwaleMatch.matchType || "phone";
+            const matchLabel = matchType === "email" ? "Email" : "Phone";
+            job.skipped++;
+            job.invalidContacts.push({
+              ...contact,
+              Verification_Status: "Skipped",
+              Talentwale_Status: "Found",
+              Talentwale_Match_Type: matchType,
+              Talentwale_Candidate_Id: talentwaleMatch.candidate?.id || "",
+              Talentwale_Candidate_Name: talentwaleMatch.candidate?.name || "",
+              Talentwale_Candidate_Phone: talentwaleMatch.candidate?.phone || last10Digits,
+              Talentwale_Candidate_Email: talentwaleMatch.candidate?.email || "",
+              Verification_Error: `Found in Talentwale (${matchLabel})`,
+            });
+            addLog("warn", `Skipped ${rawNum || normalizedEmail || "record"} - found in Talentwale by ${matchLabel.toLowerCase()}.`);
+            emitJobProgress(id, job);
+            continue;
+          }
+        }
+
         if (!normalizedNum || !waId) {
           job.invalid++;
           job.invalidContacts.push({
@@ -186,31 +225,6 @@ module.exports = function createVerifierService({
           });
           emitJobProgress(id, job);
           continue;
-        }
-
-        if (useTalentwaleVerification && talentwaleSession) {
-          const talentwaleMatch = typeof talentwaleSession.findCandidate === "function"
-            ? await talentwaleSession.findCandidate(normalizedNum)
-            : (await talentwaleSession.hasCandidate(normalizedNum))
-              ? { found: true, matchType: "phone", candidate: {} }
-              : null;
-          if (talentwaleMatch?.found) {
-            job.skipped++;
-            job.invalidContacts.push({
-              ...contact,
-              Verification_Status: "Skipped",
-              Talentwale_Status: "Found",
-              Talentwale_Match_Type: talentwaleMatch.matchType || "phone",
-              Talentwale_Candidate_Id: talentwaleMatch.candidate?.id || "",
-              Talentwale_Candidate_Name: talentwaleMatch.candidate?.name || "",
-              Talentwale_Candidate_Phone: talentwaleMatch.candidate?.phone || normalizedNum,
-              Talentwale_Candidate_Email: talentwaleMatch.candidate?.email || "",
-              Verification_Error: "Found in Talentwale (Phone)",
-            });
-            addLog("warn", `Skipped ${rawNum} - found in Talentwale.`);
-            emitJobProgress(id, job);
-            continue;
-          }
         }
 
         const verifierClient = getReadyVerifierClient();

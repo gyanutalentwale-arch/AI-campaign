@@ -26,21 +26,36 @@ module.exports = function createTalentwaleCandidateService({ addLog = () => {} }
     return String(value || "").replace(/\D/g, "");
   }
 
-  function buildPhoneVariants(candidate = {}) {
-    const phone = normalizeDigits(candidate.phone);
-    const countryCode = normalizeDigits(candidate.country_code);
-    const variants = new Set();
+  function normalizeEmail(value) {
+    return String(value || "").trim().toLowerCase();
+  }
 
-    if (phone) {
-      variants.add(phone);
-      variants.add(phone.slice(-10));
-      if (countryCode) {
-        variants.add(countryCode + phone);
-        variants.add((countryCode + phone).slice(-10));
-      }
+  function toLast10Digits(value) {
+    return normalizeDigits(value).slice(-10);
+  }
+
+  function normalizeSearchInput(searchInput) {
+    if (searchInput && typeof searchInput === "object" && !Array.isArray(searchInput)) {
+      return {
+        phone: toLast10Digits(searchInput.phone || searchInput.number || searchInput.mobile),
+        email: normalizeEmail(searchInput.email),
+      };
     }
 
-    return variants;
+    const query = String(searchInput || "").trim();
+    if (!query) {
+      return { phone: "", email: "" };
+    }
+
+    if (query.includes("@")) {
+      return { phone: "", email: normalizeEmail(query) };
+    }
+
+    return { phone: toLast10Digits(query), email: "" };
+  }
+
+  function getCandidatePhoneLast10(candidate = {}) {
+    return toLast10Digits(candidate.phone || `${candidate.country_code || ""}${candidate.phone || ""}`);
   }
 
   function buildCandidateSummary(candidate = {}) {
@@ -55,37 +70,33 @@ module.exports = function createTalentwaleCandidateService({ addLog = () => {} }
     };
   }
 
-  function findCandidateMatch(candidates = [], searchQuery) {
-    const query = String(searchQuery || "").trim();
-    if (!query) return null;
-
-    const queryDigits = normalizeDigits(query);
-    const queryLower = query.toLowerCase();
-    const isEmailQuery = queryLower.includes("@");
+  function findPhoneCandidateMatch(candidates = [], phone) {
+    const phoneLast10 = toLast10Digits(phone);
+    if (!phoneLast10) return null;
 
     for (const candidate of candidates) {
-      if (isEmailQuery) {
-        const candidateEmail = String(candidate?.email || "").trim().toLowerCase();
-        if (candidateEmail && candidateEmail === queryLower) {
-          return {
-            found: true,
-            matchType: "email",
-            candidate: buildCandidateSummary(candidate),
-          };
-        }
-        continue;
-      }
-
-      if (!queryDigits) continue;
-      const variants = buildPhoneVariants(candidate);
-      if (
-        variants.has(queryDigits) ||
-        variants.has(queryDigits.slice(-10)) ||
-        [...variants].some((value) => value && value.slice(-10) === queryDigits.slice(-10))
-      ) {
+      if (getCandidatePhoneLast10(candidate) === phoneLast10) {
         return {
           found: true,
           matchType: "phone",
+          candidate: buildCandidateSummary(candidate),
+        };
+      }
+    }
+
+    return null;
+  }
+
+  function findEmailCandidateMatch(candidates = [], email) {
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) return null;
+
+    for (const candidate of candidates) {
+      const candidateEmail = normalizeEmail(candidate?.email);
+      if (candidateEmail && candidateEmail === normalizedEmail) {
+        return {
+          found: true,
+          matchType: "email",
           candidate: buildCandidateSummary(candidate),
         };
       }
@@ -122,17 +133,33 @@ module.exports = function createTalentwaleCandidateService({ addLog = () => {} }
     }
   }
 
+  async function lookupCandidate(token, searchInput) {
+    const { phone, email } = normalizeSearchInput(searchInput);
+
+    if (phone) {
+      const phoneCandidates = await searchCandidates(token, phone);
+      const phoneMatch = findPhoneCandidateMatch(phoneCandidates, phone);
+      if (phoneMatch) return phoneMatch;
+    }
+
+    if (email) {
+      const emailCandidates = await searchCandidates(token, email);
+      const emailMatch = findEmailCandidateMatch(emailCandidates, email);
+      if (emailMatch) return emailMatch;
+    }
+
+    return null;
+  }
+
   async function createSession() {
     const token = await login();
     return {
-      async hasCandidate(searchQuery) {
-        const candidates = await searchCandidates(token, searchQuery);
-        return Boolean(findCandidateMatch(candidates, searchQuery));
+      async hasCandidate(searchInput) {
+        return Boolean(await lookupCandidate(token, searchInput));
       },
 
-      async findCandidate(searchQuery) {
-        const candidates = await searchCandidates(token, searchQuery);
-        return findCandidateMatch(candidates, searchQuery);
+      async findCandidate(searchInput) {
+        return lookupCandidate(token, searchInput);
       },
     };
   }
