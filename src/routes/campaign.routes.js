@@ -2,15 +2,16 @@ const multer = require("multer");
 const createCampaignService = require("../services/campaign.service");
 const createCampaignController = require("../controllers/campaign.controller");
 
-module.exports = function (
-  app,
-  io,
-  state,
-  addLog,
-  path,
-  fs,
-  recordModelCallUsage = () => {},
-) {
+module.exports = function registerCampaignRoutes(ctx) {
+  const {
+    app,
+    io,
+    state,
+    addLog,
+    path,
+    fs,
+    recordModelCallUsage = () => {},
+  } = ctx;
   const upload = multer({ storage: multer.memoryStorage() });
   const uploadImg = multer({
     storage: multer.memoryStorage(),
