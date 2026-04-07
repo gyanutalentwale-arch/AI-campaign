@@ -144,6 +144,16 @@ module.exports = function createVerifierService({ io, state, addLog }) {
     });
   }
 
+  function getReadyVerifierClient() {
+    if (state.botVerifierStatus === "ready" && state.botVerifierClient) {
+      return state.botVerifierClient;
+    }
+    if (state.botStatus === "ready" && state.botClient) {
+      return state.botClient;
+    }
+    return null;
+  }
+
   async function runJobLoop(id, job, contacts) {
     addLog('info', `Bulk verification started for ${contacts.length} numbers.`);
     
@@ -157,8 +167,8 @@ module.exports = function createVerifierService({ io, state, addLog }) {
       const rawNum = contact[numCol];
       const waId = toWAId(rawNum);
 
-      let verifierClient = state.botVerifierClient || state.botClient;
-      if (!verifierClient || (state.botVerifierStatus !== 'ready' && state.botStatus !== 'ready')) {
+      const verifierClient = getReadyVerifierClient();
+      if (!verifierClient) {
         job.status = "stopped";
         addLog('error', 'Verifier stopped - WhatsApp not connected.');
         emitJobProgress(id, job);
@@ -187,13 +197,26 @@ module.exports = function createVerifierService({ io, state, addLog }) {
 
     if (job.status !== "stopped") {
       job.status = "done";
-      addLog('success', `Verification finished! Valid: ${job.valid}/{job.total}`);
+      addLog('success', `Verification finished! Valid: ${job.valid}/${job.total}`);
       emitJobProgress(id, job);
     }
     if (state.activeVerifierId === id) state.activeVerifierId = null;
   }
 
   function startJob(contacts) {
+    if (!Array.isArray(contacts) || !contacts.length) {
+      throw createHttpError(400, "No contacts provided");
+    }
+
+    const activeJob = state.activeVerifierId ? jobs.get(state.activeVerifierId) : null;
+    if (activeJob && activeJob.status === "running") {
+      throw createHttpError(409, "A verification job is already running.");
+    }
+
+    if (!getReadyVerifierClient()) {
+      throw createHttpError(400, "Connect WhatsApp sender or verifier before starting verification.");
+    }
+
     const id = Date.now().toString();
     const job = {
       id,
