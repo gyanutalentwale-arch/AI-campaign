@@ -554,6 +554,8 @@
     
     <div class="controls" style="margin-top:20px;">
       <button class="btn btn-green" id="btn-verify-start" disabled>Start Verification</button>
+      <button class="btn btn-yellow" id="btn-verify-pause" style="display:none;">Pause</button>
+      <button class="btn btn-purple" id="btn-verify-resume" style="display:none;">Resume</button>
       <button class="btn btn-red" id="btn-verify-stop" style="display:none;">Stop</button>
     </div>
   </div>
@@ -570,9 +572,12 @@
       <span style="color:var(--red)">Invalid: <b id="verify-stat-invalid">0</b></span>
       <span style="color:var(--yellow)">Failed: <b id="verify-stat-failed">0</b></span>
     </div>
+    <div id="verify-progress-status" style="margin-top:12px;font-size:12px;color:var(--muted);text-align:center;">Load contacts and start verification.</div>
     <div style="margin-top:20px;text-align:center;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
-       <a class="btn btn-purple" id="btn-verify-download" style="display:none;text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:600;" href="#" target="_blank">Download Valid Numbers</a>
-       <a class="btn btn-red" id="btn-verify-download-invalid" style="display:none;text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:600;" href="#" target="_blank">Download Invalid/Skipped Records</a>
+       <a class="btn btn-green" id="btn-verify-download-valid" style="display:none;text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:600;" href="#" target="_blank">Download Valid</a>
+       <a class="btn btn-yellow" id="btn-verify-download-skipped" style="display:none;text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:600;" href="#" target="_blank">Download Skipped With Reason</a>
+       <a class="btn btn-red" id="btn-verify-download-invalid" style="display:none;text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:600;" href="#" target="_blank">Download Invalid With Reason</a>
+       <a class="btn btn-ghost" id="btn-verify-download-failed" style="display:none;text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:600;" href="#" target="_blank">Download Failed With Reason</a>
     </div>
   </div>
 </div>

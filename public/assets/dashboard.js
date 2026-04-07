@@ -1792,12 +1792,21 @@ function botVerifierLogout() {
 
 let verifyParsedContacts = [];
 let activeVerifyJobId = null;
+let activeVerifyJobStatus = '';
 
 const btnVerifyLoadSheet = document.getElementById('btn-verify-load-sheet');
 const verifyFileInput = document.getElementById('verify-file');
 const btnVerifyStart = document.getElementById('btn-verify-start');
+const btnVerifyPause = document.getElementById('btn-verify-pause');
+const btnVerifyResume = document.getElementById('btn-verify-resume');
 const btnVerifyStop = document.getElementById('btn-verify-stop');
 const verifyUseTalentwale = document.getElementById('verify-use-talentwale');
+const verifyDownloadConfigs = [
+  { id: 'btn-verify-download-valid', type: 'valid' },
+  { id: 'btn-verify-download-skipped', type: 'skipped' },
+  { id: 'btn-verify-download-invalid', type: 'invalid' },
+  { id: 'btn-verify-download-failed', type: 'failed' }
+];
 
 function setVerifyParsedInfo(message, tone = 'success') {
   const el = document.getElementById('verify-parsed-info');
@@ -1816,17 +1825,30 @@ function setVerifyParsedInfo(message, tone = 'success') {
       : 'var(--green)';
 }
 
+function setVerifyProgressMessage(message, tone = 'muted') {
+  const el = document.getElementById('verify-progress-status');
+  if (!el) return;
+  el.textContent = message || '';
+  el.style.color = tone === 'error'
+    ? 'var(--red)'
+    : tone === 'success'
+      ? 'var(--green)'
+      : tone === 'warn'
+        ? '#b7791f'
+        : 'var(--muted)';
+}
+
+function setVerifyDownloadButtonState(buttonId, isVisible, href) {
+  const btn = document.getElementById(buttonId);
+  if (!btn) return;
+  btn.style.display = isVisible ? 'inline-block' : 'none';
+  btn.href = isVisible ? href : '#';
+}
+
 function resetVerifyDownloadState() {
-  const dlBtn = document.getElementById('btn-verify-download');
-  const invalidDlBtn = document.getElementById('btn-verify-download-invalid');
-  if (dlBtn) {
-    dlBtn.style.display = 'none';
-    dlBtn.href = '#';
-  }
-  if (invalidDlBtn) {
-    invalidDlBtn.style.display = 'none';
-    invalidDlBtn.href = '#';
-  }
+  verifyDownloadConfigs.forEach((config) => {
+    setVerifyDownloadButtonState(config.id, false, '#');
+  });
 }
 
 function setVerifyIdleState() {
@@ -1834,6 +1856,12 @@ function setVerifyIdleState() {
     btnVerifyStart.style.display = 'inline-block';
     btnVerifyStart.textContent = 'Start Verification';
     btnVerifyStart.disabled = !verifyParsedContacts.length;
+  }
+  if (btnVerifyPause) {
+    btnVerifyPause.style.display = 'none';
+  }
+  if (btnVerifyResume) {
+    btnVerifyResume.style.display = 'none';
   }
   if (btnVerifyStop) {
     btnVerifyStop.style.display = 'none';
@@ -1843,8 +1871,10 @@ function setVerifyIdleState() {
 function applyVerifierProgress(job) {
   if (!job) {
     activeVerifyJobId = null;
+    activeVerifyJobStatus = '';
     setVerifyIdleState();
     resetVerifyDownloadState();
+    setVerifyProgressMessage('Load contacts and start verification.');
     return;
   }
 
@@ -1852,15 +1882,24 @@ function applyVerifierProgress(job) {
   if (progressCard) progressCard.style.display = 'block';
 
   const isRunning = job.status === 'running';
-  activeVerifyJobId = isRunning ? job.id : null;
+  const isPaused = job.status === 'paused';
+  const isFinal = job.status === 'done' || job.status === 'stopped';
+  activeVerifyJobId = job.id || null;
+  activeVerifyJobStatus = job.status || '';
 
   if (btnVerifyStart) {
-    btnVerifyStart.style.display = isRunning ? 'none' : 'inline-block';
+    btnVerifyStart.style.display = (isRunning || isPaused) ? 'none' : 'inline-block';
     btnVerifyStart.textContent = 'Start Verification';
-    btnVerifyStart.disabled = isRunning || !verifyParsedContacts.length;
+    btnVerifyStart.disabled = isRunning || isPaused || !verifyParsedContacts.length;
+  }
+  if (btnVerifyPause) {
+    btnVerifyPause.style.display = isRunning ? 'inline-block' : 'none';
+  }
+  if (btnVerifyResume) {
+    btnVerifyResume.style.display = isPaused ? 'inline-block' : 'none';
   }
   if (btnVerifyStop) {
-    btnVerifyStop.style.display = isRunning ? 'inline-block' : 'none';
+    btnVerifyStop.style.display = (isRunning || isPaused) ? 'inline-block' : 'none';
   }
 
   document.getElementById('verify-stat-total').textContent = job.total || 0;
@@ -1872,35 +1911,50 @@ function applyVerifierProgress(job) {
   const pct = job.total > 0 ? ((job.processed / job.total) * 100).toFixed(1) : 0;
   document.getElementById('verify-progress-fill').style.width = pct + '%';
 
-  const dlBtn = document.getElementById('btn-verify-download');
-  const invalidDlBtn = document.getElementById('btn-verify-download-invalid');
-  if ((job.status === 'done' || job.status === 'stopped') && job.valid > 0) {
-    dlBtn.style.display = 'inline-block';
-    dlBtn.href = '/api/verifier/log/' + job.id;
-  } else {
-    dlBtn.style.display = 'none';
-    dlBtn.href = '#';
-  }
+  const statusMessage = isRunning
+    ? `Running: ${job.processed || 0}/${job.total || 0} processed.`
+    : isPaused
+      ? `Paused at ${job.processed || 0}/${job.total || 0}. Resume or stop to download partial files.`
+      : job.status === 'stopped'
+        ? `Stopped at ${job.processed || 0}/${job.total || 0}. Partial result files are ready for download.`
+        : `Done. Processed ${job.processed || 0}/${job.total || 0}. Downloads are ready.`;
+  setVerifyProgressMessage(
+    statusMessage,
+    isRunning ? 'warn' : isPaused ? 'warn' : isFinal ? 'success' : 'muted'
+  );
 
-  if ((job.status === 'done' || job.status === 'stopped') && ((job.skipped || 0) + (job.invalid || 0) + (job.failed || 0)) > 0) {
-    invalidDlBtn.style.display = 'inline-block';
-    invalidDlBtn.href = '/api/verifier/log/' + job.id + '?type=invalid';
-  } else {
-    invalidDlBtn.style.display = 'none';
-    invalidDlBtn.href = '#';
-  }
+  setVerifyDownloadButtonState(
+    'btn-verify-download-valid',
+    isFinal && (job.valid || 0) > 0,
+    '/api/verifier/log/' + job.id + '?type=valid'
+  );
+  setVerifyDownloadButtonState(
+    'btn-verify-download-skipped',
+    isFinal && (job.skipped || 0) > 0,
+    '/api/verifier/log/' + job.id + '?type=skipped'
+  );
+  setVerifyDownloadButtonState(
+    'btn-verify-download-invalid',
+    isFinal && (job.invalid || 0) > 0,
+    '/api/verifier/log/' + job.id + '?type=invalid'
+  );
+  setVerifyDownloadButtonState(
+    'btn-verify-download-failed',
+    isFinal && (job.failed || 0) > 0,
+    '/api/verifier/log/' + job.id + '?type=failed'
+  );
 }
 
 function restoreActiveVerifierState() {
   return fetch('/api/verifier/active')
     .then(r => r.json())
     .then(d => {
-      if (!d.active || !d.job) {
-        activeVerifyJobId = null;
+      if (!d.job) {
+        applyVerifierProgress(null);
         return false;
       }
       applyVerifierProgress(d.job);
-      return true;
+      return !!d.active;
     })
     .catch(() => false);
 }
@@ -1913,6 +1967,7 @@ if (verifyFileInput) {
     verifyParsedContacts = [];
     setVerifyParsedInfo('');
     resetVerifyDownloadState();
+    setVerifyProgressMessage('Parsing file...', 'warn');
     btnVerifyStart.textContent = 'Parsing...';
     btnVerifyStart.disabled = true;
     fetch('/api/verifier/parse-upload', { method: 'POST', body: fd })
@@ -1921,11 +1976,13 @@ if (verifyFileInput) {
         if (d.error) throw new Error(d.error);
         verifyParsedContacts = d.contacts;
         setVerifyParsedInfo(`Loaded ${d.total} valid rows.`);
+        setVerifyProgressMessage('Contacts loaded. Start verification when ready.');
         btnVerifyStart.disabled = false;
         btnVerifyStart.textContent = 'Start Verification';
       }).catch(e => {
         verifyParsedContacts = [];
         setVerifyParsedInfo(e.message, 'error');
+        setVerifyProgressMessage('Could not parse contacts.', 'error');
         toast('Parse Error: ' + e.message);
         btnVerifyStart.textContent = 'Start Verification';
         btnVerifyStart.disabled = true;
@@ -1940,6 +1997,7 @@ if (btnVerifyLoadSheet) {
     verifyParsedContacts = [];
     setVerifyParsedInfo('');
     resetVerifyDownloadState();
+    setVerifyProgressMessage('Loading Google Sheet...', 'warn');
     btnVerifyStart.disabled = true;
     btnVerifyLoadSheet.disabled = true;
     btnVerifyLoadSheet.textContent = 'Loading...';
@@ -1951,6 +2009,7 @@ if (btnVerifyLoadSheet) {
       if (d.error) throw new Error(d.error);
       verifyParsedContacts = d.contacts;
       setVerifyParsedInfo(`Loaded ${d.total} valid rows.`);
+      setVerifyProgressMessage('Contacts loaded. Start verification when ready.');
       btnVerifyStart.disabled = false;
     }).catch(e => {
       verifyParsedContacts = [];
@@ -1958,6 +2017,7 @@ if (btnVerifyLoadSheet) {
       btnVerifyLoadSheet.textContent = 'Load Sheet';
       btnVerifyStart.disabled = true;
       setVerifyParsedInfo(e.message, 'error');
+      setVerifyProgressMessage('Could not load Google Sheet.', 'error');
       toast('Sheet Error: ' + e.message);
     });
   });
@@ -1968,6 +2028,7 @@ if (btnVerifyStart) {
     if (!verifyParsedContacts.length) return toast('Load contacts first');
     btnVerifyStart.disabled = true;
     resetVerifyDownloadState();
+    setVerifyProgressMessage('Starting verification...', 'warn');
     fetch('/api/verifier/start', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
@@ -1978,26 +2039,59 @@ if (btnVerifyStart) {
     }).then(r => r.json()).then(d => {
       if (d.error) {
         btnVerifyStart.disabled = false;
+        setVerifyProgressMessage('Could not start verification.', 'error');
         return toast('Start Error: ' + d.error);
       }
-      activeVerifyJobId = d.id;
-      document.getElementById('verify-progress-card').style.display = 'block';
-      btnVerifyStart.style.display = 'none';
-      btnVerifyStop.style.display = 'block';
+      applyVerifierProgress(d);
       toast('Verification started!');
     }).catch(e => {
       btnVerifyStart.disabled = false;
+      setVerifyProgressMessage('Could not start verification.', 'error');
       toast('Start Error: ' + e.message);
     });
   });
 }
 
+if (btnVerifyPause) {
+  btnVerifyPause.addEventListener('click', () => {
+    if (!activeVerifyJobId || activeVerifyJobStatus !== 'running') return;
+    fetch('/api/verifier/pause', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ id: activeVerifyJobId })
+    }).then(r => r.json()).then(d => {
+      if (d.error) return toast('Pause Error: ' + d.error);
+      if (d.job) applyVerifierProgress(d.job);
+      toast('Verification paused.');
+    }).catch(e => toast('Pause Error: ' + e.message));
+  });
+}
+
+if (btnVerifyResume) {
+  btnVerifyResume.addEventListener('click', () => {
+    if (!activeVerifyJobId || activeVerifyJobStatus !== 'paused') return;
+    fetch('/api/verifier/resume', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ id: activeVerifyJobId })
+    }).then(r => r.json()).then(d => {
+      if (d.error) return toast('Resume Error: ' + d.error);
+      if (d.job) applyVerifierProgress(d.job);
+      toast('Verification resumed.');
+    }).catch(e => toast('Resume Error: ' + e.message));
+  });
+}
+
 if (btnVerifyStop) {
   btnVerifyStop.addEventListener('click', () => {
-    if (!activeVerifyJobId) return;
+    if (!activeVerifyJobId || !['running', 'paused'].includes(activeVerifyJobStatus)) return;
     fetch('/api/verifier/stop', {
       method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id: activeVerifyJobId })
-    }).then(() => toast('Stopping verifier...'))
+    }).then(r => r.json()).then(d => {
+      if (d.error) return toast('Stop Error: ' + d.error);
+      if (d.job) applyVerifierProgress(d.job);
+      toast('Verification stopped. Partial files are ready.');
+    })
       .catch(e => toast('Stop Error: ' + e.message));
   });
 }

@@ -146,17 +146,40 @@ module.exports = function createVerifierService({
     }
   }
 
-  function emitJobProgress(id, job) {
-    io.emit("verifier_progress", {
-      id,
+  function getProcessedCount(job) {
+    return (job.valid || 0) + (job.skipped || 0) + (job.invalid || 0) + (job.failed || 0);
+  }
+
+  function buildJobSummary(job) {
+    return {
+      id: job.id,
       status: job.status,
       total: job.total,
       valid: job.valid,
       skipped: job.skipped,
       invalid: job.invalid,
       failed: job.failed,
-      processed: job.valid + job.skipped + job.invalid + job.failed
-    });
+      processed: getProcessedCount(job),
+      useTalentwaleVerification: !!job.useTalentwaleVerification,
+    };
+  }
+
+  function buildVerifierRecord(contact, status, extra = {}) {
+    const row = {
+      ...contact,
+      Verification_Status: status,
+      ...extra,
+    };
+    const reason = row.Verification_Reason || row.Verification_Error || "";
+    if (reason) {
+      row.Verification_Error = reason;
+      row.Verification_Reason = reason;
+    }
+    return row;
+  }
+
+  function emitJobProgress(id, job) {
+    io.emit("verifier_progress", buildJobSummary({ ...job, id }));
   }
 
   function getReadyVerifierClient() {
@@ -169,124 +192,139 @@ module.exports = function createVerifierService({
     return null;
   }
 
-  async function runJobLoop(id, job, contacts, options = {}) {
-    addLog('info', `Bulk verification started for ${contacts.length} numbers.`);
-    const { useTalentwaleVerification = false, talentwaleSession = null } = options;
-    
-    for (const contact of contacts) {
-      if (job.status === "stopped") {
-        addLog('info', 'Bulk verification stopped.');
-        break;
-      }
+  async function runJobLoop(id, job) {
+    if (job.loopRunning) return;
 
-      const numCol = findContactColumn(contact, /number|phone|mobile|contact|whatsapp|cell|no\b|num/i) || Object.keys(contact)[0];
-      const emailCol = findContactColumn(contact, /email|mail/i);
-      const rawNum = contact[numCol];
-      const rawEmail = emailCol ? contact[emailCol] : "";
-      const normalizedNum = normalizeRawPhoneDigits(rawNum);
-      const last10Digits = normalizedNum.slice(-10);
-      const normalizedEmail = normalizeEmailValue(rawEmail);
-      const waId = toWAId(rawNum);
+    job.loopRunning = true;
+    const isResume = job.nextIndex > 0;
+    addLog(
+      "info",
+      isResume
+        ? `Bulk verification resumed from ${job.nextIndex + 1}/${job.total}.`
+        : `Bulk verification started for ${job.total} numbers.`,
+    );
+    emitJobProgress(id, job);
 
-      try {
-        if (useTalentwaleVerification && talentwaleSession) {
-          const talentwaleMatch = typeof talentwaleSession.findCandidate === "function"
-            ? await talentwaleSession.findCandidate({ phone: last10Digits, email: normalizedEmail })
-            : (await talentwaleSession.hasCandidate({ phone: last10Digits, email: normalizedEmail }))
-              ? { found: true, matchType: normalizedEmail ? "phone_or_email" : "phone", candidate: {} }
-              : null;
-          if (talentwaleMatch?.found) {
-            const matchType = talentwaleMatch.matchType || "phone";
-            const matchLabel = matchType === "email" ? "Email" : "Phone";
-            job.skipped++;
-            job.invalidContacts.push({
-              ...contact,
-              Verification_Status: "Skipped",
-              Talentwale_Status: "Found",
-              Talentwale_Match_Type: matchType,
-              Talentwale_Candidate_Id: talentwaleMatch.candidate?.id || "",
-              Talentwale_Candidate_Name: talentwaleMatch.candidate?.name || "",
-              Talentwale_Candidate_Phone: talentwaleMatch.candidate?.phone || last10Digits,
-              Talentwale_Candidate_Email: talentwaleMatch.candidate?.email || "",
-              Verification_Error: `Found in Talentwale (${matchLabel})`,
-            });
-            addLog("warn", `Skipped ${rawNum || normalizedEmail || "record"} - found in Talentwale by ${matchLabel.toLowerCase()}.`);
-            emitJobProgress(id, job);
-            continue;
+    try {
+      while (job.nextIndex < job.contacts.length) {
+        if (job.status === "paused" || job.status === "stopped") {
+          return;
+        }
+
+        const contact = job.contacts[job.nextIndex];
+        const numCol = findContactColumn(contact, /number|phone|mobile|contact|whatsapp|cell|no\b|num/i) || Object.keys(contact)[0];
+        const emailCol = findContactColumn(contact, /email|mail/i);
+        const rawNum = contact[numCol];
+        const rawEmail = emailCol ? contact[emailCol] : "";
+        const normalizedNum = normalizeRawPhoneDigits(rawNum);
+        const last10Digits = normalizedNum.slice(-10);
+        const normalizedEmail = normalizeEmailValue(rawEmail);
+        const waId = toWAId(rawNum);
+
+        try {
+          if (job.useTalentwaleVerification && job.talentwaleSession) {
+            const talentwaleMatch = typeof job.talentwaleSession.findCandidate === "function"
+              ? await job.talentwaleSession.findCandidate({ phone: last10Digits, email: normalizedEmail })
+              : (await job.talentwaleSession.hasCandidate({ phone: last10Digits, email: normalizedEmail }))
+                ? { found: true, matchType: normalizedEmail ? "phone_or_email" : "phone", candidate: {} }
+                : null;
+
+            if (talentwaleMatch?.found) {
+              const matchType = talentwaleMatch.matchType || "phone";
+              const matchLabel = matchType === "email" ? "Email" : "Phone";
+              job.skipped++;
+              job.skippedContacts.push(buildVerifierRecord(contact, "Skipped", {
+                Talentwale_Status: "Found",
+                Talentwale_Match_Type: matchType,
+                Talentwale_Candidate_Id: talentwaleMatch.candidate?.id || "",
+                Talentwale_Candidate_Name: talentwaleMatch.candidate?.name || "",
+                Talentwale_Candidate_Phone: talentwaleMatch.candidate?.phone || last10Digits,
+                Talentwale_Candidate_Email: talentwaleMatch.candidate?.email || "",
+                Verification_Reason: `Found in Talentwale (${matchLabel})`,
+              }));
+              addLog("warn", `Skipped ${rawNum || normalizedEmail || "record"} - found in Talentwale by ${matchLabel.toLowerCase()}.`);
+              job.nextIndex++;
+              emitJobProgress(id, job);
+              continue;
+            }
           }
-        }
 
-        if (!normalizedNum || !waId) {
-          job.invalid++;
-          job.invalidContacts.push({
-            ...contact,
-            Verification_Status: "Invalid",
-            Verification_Error: "Invalid phone number",
-          });
-          emitJobProgress(id, job);
-          continue;
-        }
-
-        const verifierClient = getReadyVerifierClient();
-        if (!verifierClient) {
-          if (useTalentwaleVerification) {
-            job.failed++;
-            job.invalidContacts.push({
-              ...contact,
-              Verification_Status: "Failed",
-              Talentwale_Status: "Not Found",
-              Verification_Error: "WhatsApp not connected for fallback verification",
-            });
-            addLog("warn", `Verification failed for ${rawNum}: WhatsApp not connected for fallback verification`);
+          if (!normalizedNum || !waId) {
+            job.invalid++;
+            job.invalidContacts.push(buildVerifierRecord(contact, "Invalid", {
+              Verification_Reason: "Invalid phone number",
+            }));
+            job.nextIndex++;
             emitJobProgress(id, job);
             continue;
           }
 
-          job.status = "stopped";
-          addLog('error', 'Verifier stopped - WhatsApp not connected.');
-          emitJobProgress(id, job);
-          break;
+          const verifierClient = getReadyVerifierClient();
+          if (!verifierClient) {
+            if (job.useTalentwaleVerification) {
+              job.failed++;
+              job.failedContacts.push(buildVerifierRecord(contact, "Failed", {
+                Talentwale_Status: "Not Found",
+                Verification_Reason: "WhatsApp not connected for fallback verification",
+              }));
+              addLog("warn", `Verification failed for ${rawNum}: WhatsApp not connected for fallback verification`);
+              job.nextIndex++;
+              emitJobProgress(id, job);
+              continue;
+            }
+
+            job.status = "stopped";
+            state.activeVerifierId = null;
+            state.lastVerifierJobId = id;
+            addLog("error", "Verifier stopped - WhatsApp not connected.");
+            emitJobProgress(id, job);
+            return;
+          }
+
+          const verification = await verifyWhatsAppRecipient(verifierClient, waId);
+          if (verification.registered) {
+            job.valid++;
+            job.validContacts.push(buildVerifierRecord(contact, "Valid", {
+              WhatsApp_Status: "Available",
+              ...(job.useTalentwaleVerification ? { Talentwale_Status: "Not Found" } : {}),
+            }));
+          } else {
+            job.invalid++;
+            job.invalidContacts.push(buildVerifierRecord(contact, "Invalid", {
+              ...(job.useTalentwaleVerification ? { Talentwale_Status: "Not Found" } : {}),
+              Verification_Reason: "Not on WhatsApp",
+            }));
+          }
+        } catch (err) {
+          job.failed++;
+          job.failedContacts.push(buildVerifierRecord(contact, "Failed", {
+            Verification_Reason: `Failed: ${err.message}`,
+          }));
+          addLog('warn', `Verification failed for ${rawNum}: ${err.message}`);
         }
 
-        const verification = await verifyWhatsAppRecipient(verifierClient, waId);
-        if (verification.registered) {
-          job.valid++;
-          job.cleanContacts.push({
-            ...contact,
-            Verification_Status: "Valid",
-            WhatsApp_Status: "Available",
-            ...(useTalentwaleVerification ? { Talentwale_Status: "Not Found" } : {}),
-          });
-        } else {
-          job.invalid++;
-          job.invalidContacts.push({
-            ...contact,
-            Verification_Status: "Invalid",
-            ...(useTalentwaleVerification ? { Talentwale_Status: "Not Found" } : {}),
-            Verification_Error: "Not on WhatsApp",
-          });
+        job.nextIndex++;
+        emitJobProgress(id, job);
+
+        if (job.status === "paused" || job.status === "stopped") {
+          return;
         }
-      } catch (err) {
-        job.failed++;
-        job.invalidContacts.push({
-          ...contact,
-          Verification_Status: "Failed",
-          Verification_Error: `Failed: ${err.message}`,
-        });
-        addLog('warn', `Verification failed for ${rawNum}: ${err.message}`);
+
+        if (job.nextIndex < job.contacts.length) {
+          await new Promise((resolve) => setTimeout(resolve, 200 + Math.random() * 400));
+        }
       }
 
-      emitJobProgress(id, job);
-      // Small delay to prevent rate limit (200ms - 600ms)
-      await new Promise(r => setTimeout(r, 200 + Math.random() * 400));
+      if (job.status === "running") {
+        job.status = "done";
+        state.activeVerifierId = null;
+        state.lastVerifierJobId = id;
+        addLog('success', `Verification finished! Valid: ${job.valid}/${job.total}`);
+        emitJobProgress(id, job);
+      }
+    } finally {
+      job.loopRunning = false;
     }
-
-    if (job.status !== "stopped") {
-      job.status = "done";
-      addLog('success', `Verification finished! Valid: ${job.valid}/${job.total}`);
-      emitJobProgress(id, job);
-    }
-    if (state.activeVerifierId === id) state.activeVerifierId = null;
   }
 
   function normalizeStartPayload(input) {
@@ -309,8 +347,13 @@ module.exports = function createVerifierService({
     }
 
     const activeJob = state.activeVerifierId ? jobs.get(state.activeVerifierId) : null;
-    if (activeJob && activeJob.status === "running") {
-      throw createHttpError(409, "A verification job is already running.");
+    if (activeJob && (activeJob.status === "running" || activeJob.status === "paused")) {
+      throw createHttpError(
+        409,
+        activeJob.status === "paused"
+          ? "A verification job is paused. Resume or stop it before starting a new one."
+          : "A verification job is already running.",
+      );
     }
 
     if (!useTalentwaleVerification && !getReadyVerifierClient()) {
@@ -335,52 +378,113 @@ module.exports = function createVerifierService({
       skipped: 0,
       invalid: 0,
       failed: 0,
+      nextIndex: 0,
+      loopRunning: false,
       useTalentwaleVerification,
-      cleanContacts: [],
+      contacts,
+      talentwaleSession,
+      validContacts: [],
       invalidContacts: [],
+      skippedContacts: [],
+      failedContacts: [],
     };
     jobs.set(id, job);
     state.activeVerifierId = id;
+    state.lastVerifierJobId = id;
 
-    void runJobLoop(id, job, contacts, {
-      useTalentwaleVerification,
-      talentwaleSession,
-    });
-    return { id };
+    void runJobLoop(id, job);
+    return buildJobSummary(job);
+  }
+
+  function pauseJob(id) {
+    const job = jobs.get(id);
+    if (!job) throw createHttpError(404, "No verification job found");
+    if (job.status !== "running") {
+      throw createHttpError(409, "Only a running verification job can be paused.");
+    }
+
+    job.status = "paused";
+    addLog("info", "Bulk verification paused.");
+    emitJobProgress(id, job);
+    return { ok: true, job: buildJobSummary(job) };
+  }
+
+  async function resumeJob(id) {
+    const job = jobs.get(id);
+    if (!job) throw createHttpError(404, "No verification job found");
+    if (job.status !== "paused") {
+      throw createHttpError(409, "Only a paused verification job can be resumed.");
+    }
+
+    if (job.useTalentwaleVerification) {
+      try {
+        job.talentwaleSession = await talentwaleCandidateService.createSession();
+      } catch (error) {
+        throw createHttpError(500, `Talentwale verification login failed: ${error.message}`);
+      }
+    }
+
+    job.status = "running";
+    state.activeVerifierId = id;
+    emitJobProgress(id, job);
+    void runJobLoop(id, job);
+    return { ok: true, job: buildJobSummary(job) };
   }
 
   function stopJob(id) {
     const job = jobs.get(id);
-    if (job) job.status = "stopped";
-    return { ok: true };
+    if (!job) throw createHttpError(404, "No verification job found");
+    if (job.status === "done" || job.status === "stopped") {
+      return { ok: true, job: buildJobSummary(job) };
+    }
+
+    job.status = "stopped";
+    state.activeVerifierId = null;
+    state.lastVerifierJobId = id;
+    addLog("info", "Bulk verification stopped.");
+    emitJobProgress(id, job);
+    return { ok: true, job: buildJobSummary(job) };
   }
 
   function getActiveJob() {
-    const id = state.activeVerifierId;
-    if (!id) return { active: false };
-    const job = jobs.get(id);
-    if (!job) return { active: false };
+    const activeId = state.activeVerifierId;
+    const activeJob = activeId ? jobs.get(activeId) : null;
+    if (activeJob) {
+      return {
+        active: activeJob.status === "running" || activeJob.status === "paused",
+        job: buildJobSummary(activeJob),
+      };
+    }
+
+    const lastId = state.lastVerifierJobId;
+    const lastJob = lastId ? jobs.get(lastId) : null;
+    if (!lastJob) return { active: false };
     return {
-      active: true,
-      job: {
-        id,
-        status: job.status,
-        total: job.total,
-        valid: job.valid,
-        skipped: job.skipped,
-        invalid: job.invalid,
-        failed: job.failed,
-        processed: job.valid + job.skipped + job.invalid + job.failed,
-        useTalentwaleVerification: !!job.useTalentwaleVerification,
-      }
+      active: false,
+      job: buildJobSummary(lastJob),
     };
   }
 
   function getJobLog(id, type = 'valid') {
     const job = jobs.get(id);
-    if (!job) throw createHttpError(404, "No active job found");
-    
-    const targetContacts = type === 'invalid' ? job.invalidContacts : job.cleanContacts;
+    if (!job) throw createHttpError(404, "No verification job found");
+
+    let targetContacts = [];
+    if (type === "valid") targetContacts = job.validContacts;
+    else if (type === "invalid") targetContacts = job.invalidContacts;
+    else if (type === "skipped") targetContacts = job.skippedContacts;
+    else if (type === "failed") targetContacts = job.failedContacts;
+    else if (type === "all") {
+      targetContacts = [
+        ...job.validContacts,
+        ...job.skippedContacts,
+        ...job.invalidContacts,
+        ...job.failedContacts,
+      ];
+    } else {
+      throw createHttpError(400, `Unsupported log type: ${type}`);
+    }
+
     if (!targetContacts || !targetContacts.length) {
       throw createHttpError(404, `No ${type} contacts found for download`);
     }
@@ -397,6 +501,8 @@ module.exports = function createVerifierService({
     parseContactsFromUpload,
     parseContactsFromSheet,
     startJob,
+    pauseJob,
+    resumeJob,
     stopJob,
     getActiveJob,
     getJobLog
