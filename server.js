@@ -284,6 +284,7 @@ require('./src/routes/campaign.routes')(
   recordModelCallUsage,
 );
 require('./src/routes/email.routes')(app, io, state, addLog, path, fs);
+require('./src/routes/verifier.routes')(app, io, state, addLog, path, fs);
 // --- Socket.IO ---
 io.on("connection", (socket) => {
   socket.emit("init", {

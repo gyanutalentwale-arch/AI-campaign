@@ -20,6 +20,7 @@ document.querySelectorAll('.nav-item').forEach(item => {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     item.classList.add('active');
     document.getElementById('page-' + item.dataset.page).classList.add('active');
+    if (item.dataset.page === 'verify') document.getElementById('page-verify').classList.add('active');
     if (item.dataset.page === 'training') loadTraining();
     if (item.dataset.page === 'config') loadConfig();
     if (item.dataset.page === 'usage') loadUsageLog();
@@ -1783,3 +1784,117 @@ function botVerifierLogout() {
     toast(d.msg || 'Logged out');
   });
 }
+
+
+let verifyParsedContacts = [];
+let activeVerifyJobId = null;
+
+const btnVerifyLoadSheet = document.getElementById('btn-verify-load-sheet');
+const verifyFileInput = document.getElementById('verify-file');
+const btnVerifyStart = document.getElementById('btn-verify-start');
+const btnVerifyStop = document.getElementById('btn-verify-stop');
+
+if (verifyFileInput) {
+  verifyFileInput.addEventListener('change', () => {
+    if (!verifyFileInput.files[0]) return;
+    const fd = new FormData();
+    fd.append('file', verifyFileInput.files[0]);
+    btnVerifyStart.textContent = 'Parsing...';
+    btnVerifyStart.disabled = true;
+    fetch('/api/verifier/parse-upload', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) throw new Error(d.error);
+        verifyParsedContacts = d.contacts;
+        document.getElementById('verify-parsed-info').textContent = `Loaded ${d.total} valid rows.`;
+        document.getElementById('verify-parsed-info').style.display = 'block';
+        btnVerifyStart.disabled = false;
+        btnVerifyStart.textContent = 'Start Verification';
+      }).catch(e => {
+        toast('Parse Error: ' + e.message);
+        btnVerifyStart.textContent = 'Start Verification';
+      });
+  });
+}
+
+if (btnVerifyLoadSheet) {
+  btnVerifyLoadSheet.addEventListener('click', () => {
+    const url = document.getElementById('verify-sheet-url').value.trim();
+    if (!url) return toast('Enter Google Sheet URL');
+    btnVerifyLoadSheet.disabled = true;
+    btnVerifyLoadSheet.textContent = 'Loading...';
+    fetch('/api/verifier/parse-sheet', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ url })
+    }).then(r => r.json()).then(d => {
+      btnVerifyLoadSheet.disabled = false;
+      btnVerifyLoadSheet.textContent = 'Load Sheet';
+      if (d.error) throw new Error(d.error);
+      verifyParsedContacts = d.contacts;
+      document.getElementById('verify-parsed-info').textContent = `Loaded ${d.total} valid rows.`;
+      document.getElementById('verify-parsed-info').style.display = 'block';
+      btnVerifyStart.disabled = false;
+    }).catch(e => toast('Sheet Error: ' + e.message));
+  });
+}
+
+if (btnVerifyStart) {
+  btnVerifyStart.addEventListener('click', () => {
+    if (!verifyParsedContacts.length) return toast('Load contacts first');
+    btnVerifyStart.disabled = true;
+    fetch('/api/verifier/start', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ contacts: verifyParsedContacts })
+    }).then(r => r.json()).then(d => {
+      if (d.error) {
+        btnVerifyStart.disabled = false;
+        return toast('Start Error: ' + d.error);
+      }
+      activeVerifyJobId = d.id;
+      document.getElementById('verify-progress-card').style.display = 'block';
+      btnVerifyStart.style.display = 'none';
+      btnVerifyStop.style.display = 'block';
+      document.getElementById('btn-verify-download').style.display = 'none';
+      toast('Verification started!');
+    });
+  });
+}
+
+if (btnVerifyStop) {
+  btnVerifyStop.addEventListener('click', () => {
+    if (!activeVerifyJobId) return;
+    fetch('/api/verifier/stop', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id: activeVerifyJobId })
+    }).then(() => toast('Stopping verifier...'));
+  });
+}
+
+socket.on('verifier_progress', (job) => {
+  activeVerifyJobId = job.id;
+  document.getElementById('verify-progress-card').style.display = 'block';
+  
+  if (btnVerifyStart) {
+    if (job.status === 'running') {
+      btnVerifyStart.style.display = 'none';
+      btnVerifyStop.style.display = 'inline-block';
+    } else {
+      btnVerifyStart.style.display = 'inline-block';
+      btnVerifyStart.disabled = false;
+      btnVerifyStop.style.display = 'none';
+    }
+  }
+
+  document.getElementById('verify-stat-total').textContent = job.total;
+  document.getElementById('verify-stat-valid').textContent = job.valid;
+  document.getElementById('verify-stat-invalid').textContent = job.invalid;
+  document.getElementById('verify-stat-failed').textContent = job.failed;
+  
+  const pct = job.total > 0 ? ((job.processed / job.total) * 100).toFixed(1) : 0;
+  document.getElementById('verify-progress-fill').style.width = pct + '%';
+  
+  const dlBtn = document.getElementById('btn-verify-download');
+  if ((job.status === 'done' || job.status === 'stopped') && job.valid > 0) {
+    dlBtn.style.display = 'inline-block';
+    dlBtn.href = '/api/verifier/log/' + job.id;
+  } else {
+    dlBtn.style.display = 'none';
+  }
+});
