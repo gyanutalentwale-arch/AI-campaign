@@ -29,6 +29,22 @@ module.exports = function createVerifierController(verifierService) {
       }
     },
 
+    pauseJob(req, res) {
+      try {
+        res.json(verifierService.pauseJob(req.body?.id));
+      } catch (error) {
+        sendError(res, error);
+      }
+    },
+
+    async resumeJob(req, res) {
+      try {
+        res.json(await verifierService.resumeJob(req.body?.id));
+      } catch (error) {
+        sendError(res, error);
+      }
+    },
+
     stopJob(req, res) {
       try {
         res.json(verifierService.stopJob(req.body?.id));
