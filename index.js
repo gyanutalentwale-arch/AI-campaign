@@ -510,15 +510,27 @@ const client = new Client({
     }
 });
 
+const clientVerifier = new Client({
+    authStrategy: new LocalAuth({ clientId: "client-verifier", dataPath: "./whatsapp_session_verifier" }),
+    puppeteer: {
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+    }
+});
+
 // Register bot control functions for dashboard
 state.botInitFn    = () => client.initialize();
 state.botDestroyFn = () => client.destroy();
 state.botClient    = null; // set after ready
 state.processUnreadFn = (source = 'manual') => processUnreadMessages(source);
 
+state.botVerifierInitFn    = () => clientVerifier.initialize();
+state.botVerifierDestroyFn = () => clientVerifier.destroy();
+state.botVerifierClient    = null; // set after ready
+
 // QR Code
 client.on('qr', async (qr) => {
-    console.log('QR code generated. Scan it from the dashboard.');
+    console.log('Sender QR code generated. Scan it from the dashboard.');
     state.botStatus = 'qr';
     io.emit('status', 'qr');
     try {
@@ -528,8 +540,41 @@ client.on('qr', async (qr) => {
     } catch (_) {}
 });
 
+clientVerifier.on('qr', async (qr) => {
+    console.log('Verifier QR code generated. Scan it from the dashboard.');
+    state.botVerifierStatus = 'qr';
+    io.emit('status_verifier', 'qr');
+    try {
+        const qrDataUrl = await QRCode.toDataURL(qr);
+        state.verifierQrCode = qrDataUrl;
+        io.emit('qr_verifier', qrDataUrl);
+    } catch (_) {}
+});
+
+client.on('authenticated', () => {
+    console.log('Sender authenticated via QR.');
+    state.botStatus = 'starting';
+    io.emit('status', 'starting');
+});
+clientVerifier.on('authenticated', () => {
+    console.log('Verifier authenticated via QR.');
+    state.botVerifierStatus = 'starting';
+    io.emit('status_verifier', 'starting');
+});
+
+client.on('authenticated', () => {
+    console.log('Sender authenticated via QR.');
+    state.botStatus = 'starting';
+    io.emit('status', 'starting');
+});
+clientVerifier.on('authenticated', () => {
+    console.log('Verifier authenticated via QR.');
+    state.botVerifierStatus = 'starting';
+    io.emit('status_verifier', 'starting');
+});
+
 // Auth failure & disconnection
-client.on('auth_failure', (msg) => { console.error('âŒ Auth failed:', msg); state.botStatus = 'stopped'; io.emit('status', 'stopped'); });
+client.on('auth_failure', (msg) => { console.error('âŒ Sender Auth failed:', msg); state.botStatus = 'stopped'; io.emit('status', 'stopped'); });
 client.on('disconnected', (reason) => {
     const reasonText = String(reason || '').toLowerCase();
     state.botClient = null;
@@ -537,17 +582,33 @@ client.on('disconnected', (reason) => {
     io.emit('status', 'stopped');
     // For manual stop/logout, wait for explicit dashboard start.
     if (reasonText.includes('navigation') || reasonText.includes('logout')) {
-        console.log('Disconnected:', reason, '- Bot stopped. Use WhatsApp Connect to start again.');
+        console.log('Sender Disconnected:', reason, '- Bot stopped. Use WhatsApp Connect to start again.');
         return;
     }
-    console.log('Disconnected:', reason, '- Reconnecting...');
+    console.log('Sender Disconnected:', reason, '- Reconnecting...');
     state.botStatus = 'starting';
     io.emit('status', 'starting');
     client.initialize();
 });
+
+clientVerifier.on('auth_failure', (msg) => { console.error('❌ Verifier Auth failed:', msg); state.botVerifierStatus = 'stopped'; io.emit('status_verifier', 'stopped'); });
+clientVerifier.on('disconnected', (reason) => {
+    const reasonText = String(reason || '').toLowerCase();
+    state.botVerifierClient = null;
+    state.botVerifierStatus = 'stopped';
+    io.emit('status_verifier', 'stopped');
+    if (reasonText.includes('navigation') || reasonText.includes('logout')) {
+        console.log('Verifier Disconnected:', reason, '- Bot stopped. Use Connect Verifier to start again.');
+        return;
+    }
+    console.log('Verifier Disconnected:', reason, '- Reconnecting...');
+    state.botVerifierStatus = 'starting';
+    io.emit('status_verifier', 'starting');
+    clientVerifier.initialize();
+});
 // Client Ready - Process unread messages
 client.on('ready', async () => {
-    console.log('âœ… WhatsApp Bot is ready!');
+    console.log('âœ… WhatsApp Sender is ready!');
     state.botStatus = 'ready';
     state.botClient = client;
     state.qrCode = null;
@@ -558,6 +619,14 @@ client.on('ready', async () => {
         return;
     }
     await processUnreadMessages('ready');
+});
+
+clientVerifier.on('ready', async () => {
+    console.log('✅ WhatsApp Verifier is ready!');
+    state.botVerifierStatus = 'ready';
+    state.botVerifierClient = clientVerifier;
+    state.verifierQrCode = null;
+    io.emit('status_verifier', 'ready');
 });
 
 // Message Handling - Add to queue

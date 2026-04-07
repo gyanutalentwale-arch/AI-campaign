@@ -1,8 +1,29 @@
+# Dependencies
 node_modules/
+
+# Environment keys
 .env
+.env.*.local
+
+# WhatsApp Web JS Caches & Auth Sessions
 whatsapp_session/
+whatsapp_session_verifier/
 .wwebjs_cache/
-*.log
+.wwebjs_auth/
+
+# Local Bot Data & States
 data/
 *_preset.json
 *_usage_state.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temporary patch scripts
+patch_*.js
+update_index.js
+
+# OS Specific
+.DS_Store
+Thumbs.db
