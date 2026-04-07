@@ -11,6 +11,8 @@ module.exports = function registerVerifierRoutes(ctx) {
   app.post("/api/verifier/parse-upload", upload.single("file"), verifierController.parseUpload);
   app.post("/api/verifier/parse-sheet", verifierController.parseSheet);
   app.post("/api/verifier/start", verifierController.startJob);
+  app.post("/api/verifier/pause", verifierController.pauseJob);
+  app.post("/api/verifier/resume", verifierController.resumeJob);
   app.post("/api/verifier/stop", verifierController.stopJob);
   app.get("/api/verifier/active", verifierController.getActiveJob);
   app.get("/api/verifier/log/:id", verifierController.downloadLog);

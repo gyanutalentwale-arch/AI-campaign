@@ -48,6 +48,7 @@ function createInitialState(persistedRuntimeState = {}) {
     verifierQrCode: null,
     activeCampaignId: null,
     activeVerifierId: null,
+    lastVerifierJobId: null,
     campaignRecipients: new Set(),
     processUnreadFn: null,
     autoReply: !!persistedRuntimeState?.autoReply,
