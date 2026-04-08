@@ -377,6 +377,30 @@ function normalizeTemplateForAI(rawTemplate) {
   return out;
 }
 
+function hasLocalVariationSyntax(text) {
+  return /\[\[[\s\S]*\|\|[\s\S]*\]\]/.test(String(text || ""));
+}
+
+function countLocalVariationGroups(text) {
+  return (String(text || "").match(/\[\[[\s\S]*?\|\|[\s\S]*?\]\]/g) || []).length;
+}
+
+function resolveLocalVariationSyntax(text, { preview = false } = {}) {
+  return String(text || "").replace(
+    /\[\[([\s\S]*?\|\|[\s\S]*?)\]\]/g,
+    (_, body) => {
+      const options = String(body)
+        .split("||")
+        .map((part) => part.trim())
+        .filter((part) => part.length);
+
+      if (!options.length) return "";
+      if (preview) return options[0];
+      return options[Math.floor(Math.random() * options.length)];
+    },
+  );
+}
+
 function sanitizeAIMessage(rawText) {
   let out = String(rawText || "")
     .replace(/\r/g, "")
@@ -644,28 +668,35 @@ function isSafeAIMessage(variedText, templateWithPlaceholders, config) {
   return { valid: true, reason: "ok" };
 }
 
-// Generate one unique variation per contact - fresh every time
-async function getUniqueVariation(
+function buildCampaignContactContext(contactData) {
+  return Object.entries(contactData || {})
+    .filter(([k]) => !/number|phone|mobile|_status|_error|_msg/i.test(k))
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(", ");
+}
+
+// Generate one reusable AI spin template per campaign.
+async function buildAiSpinTemplate(
   templateWithPlaceholders,
-  filledMsg,
+  fallbackTemplate,
   contactData,
   aiRuntime,
   campaign,
 ) {
-  const tone = TONES[toneIndex % TONES.length];
-  toneIndex++;
   const aiConfig = aiRuntime?.config || getCampaignAIConfig();
   const modelName = aiRuntime?.model || aiConfig.model;
   const authMode = aiRuntime?.mode || "api_key";
+  const toneSet = Array.from({ length: Math.min(TONES.length, 5) }, () => {
+    const tone = TONES[toneIndex % TONES.length];
+    toneIndex++;
+    return tone;
+  });
 
-  // Build context about the recipient so AI can personalize further
-  const contactContext = Object.entries(contactData)
-    .filter(([k]) => !/number|phone|mobile|_status|_error|_msg/i.test(k))
-    .map(([k, v]) => `${k}: ${v}`)
-    .join(", ");
+  // Build context once so the reusable spin template still feels relevant.
+  const contactContext = buildCampaignContactContext(contactData);
   const formattedTemplate = formatForWhatsApp(templateWithPlaceholders);
 
-  const prompt = `You are writing a personalized WhatsApp message. Rewrite the template below in a ${tone} tone.
+  const prompt = `You are preparing a reusable WhatsApp spin template for a bulk campaign.
 
 Rules:
 - Keep ALL placeholders like [Name], [City] EXACTLY as-is - do NOT replace or translate them
@@ -677,10 +708,15 @@ Rules:
 - Keep standalone CTA, URL, and signature lines as standalone lines
 - Keep bullets/emoji starters and numbering style exactly in the same positions
 - Keep Markdown emphasis style clean (bold/italic), and do NOT use backticks (\`)
-- Make it feel natural and human, but only wording should change
+- Do NOT fully rewrite each message separately
+- Instead, wrap natural alternatives in this exact syntax: [[option 1||option 2||option 3]]
+- Each [[...]] group must contain 2 to 4 short options with the same meaning
+- Add spin groups in 4 to 12 places if the template length allows; leave the rest unchanged
+- Do NOT use nested [[...]] groups
 - Keep it concise and WhatsApp-friendly (max 1100 characters)
-- Use short paragraphs and clear spacing (avoid big text blocks)
-- Return ONLY the final message, nothing else
+- Make the wording feel human and slightly varied across sends
+- Use tones such as: ${toneSet.join(", ")}
+- Return ONLY the final spin template, nothing else
 
 Recipient context (use to make it feel personal if relevant): ${contactContext || "general user"}
 
@@ -696,7 +732,7 @@ ${templateWithPlaceholders}`;
     recordModelCallUsage(usageLabel, "wa_campaign_ai");
     trackCampaignAiUsage(campaign, authMode);
 
-    const fallback = formatForWhatsApp(filledMsg);
+    const fallback = formatForWhatsApp(String(fallbackTemplate || ""));
     let rawText = "";
 
     if (authMode === "google_oauth") {
@@ -724,38 +760,39 @@ ${templateWithPlaceholders}`;
       throw new Error("Campaign AI returned an empty response.");
     }
 
-    const rawVaried = sanitizeAIMessage(rawText);
-    let varied = formatForWhatsApp(rawVaried);
-    let validation = isSafeAIMessage(varied, formattedTemplate, aiConfig);
+    const spinTemplate = formatForWhatsApp(sanitizeAIMessage(rawText));
+    const previewVariant = formatForWhatsApp(
+      resolveLocalVariationSyntax(spinTemplate, { preview: true }),
+    );
+    const validation = isSafeAIMessage(
+      previewVariant,
+      formattedTemplate,
+      aiConfig,
+    );
 
-    if (!validation.valid && validation.reason === "layout_mismatch") {
-      const repaired = formatForWhatsApp(
-        repairAIMessageLayout(rawVaried, formattedTemplate),
+    if (!hasLocalVariationSyntax(spinTemplate)) {
+      addLog(
+        "warn",
+        `AI spin template rejected (no_spin_groups) via ${usageLabel}; fallback used`,
       );
-      const repairedValidation = isSafeAIMessage(
-        repaired,
-        formattedTemplate,
-        aiConfig,
-      );
-      if (repairedValidation.valid) {
-        varied = repaired;
-        validation = repairedValidation;
-        addLog("info", `AI variation layout repaired via ${aiConfig.model}`);
-      }
+      return fallback;
     }
 
     if (!validation.valid) {
       addLog(
         "warn",
-        `AI variation rejected (${validation.reason}) via ${usageLabel}; fallback used`,
+        `AI spin template rejected (${validation.reason}) via ${usageLabel}; fallback used`,
       );
       return fallback;
     }
-    addLog("info", `AI variation accepted via ${usageLabel}`);
-    return varied;
+    addLog(
+      "info",
+      `AI spin template accepted via ${usageLabel} with ${countLocalVariationGroups(spinTemplate)} variation groups`,
+    );
+    return spinTemplate;
   } catch (e) {
-    addLog("warn", `AI variation failed: ${e.message}`);
-    return formatForWhatsApp(filledMsg);
+    addLog("warn", `AI spin template failed: ${e.message}`);
+    return formatForWhatsApp(String(fallbackTemplate || ""));
   }
 }
 
@@ -880,8 +917,11 @@ async function runCampaignLoop(id, campaign, payload) {
   }
 
   // AI uses a normalized template to avoid broken code-style placeholders.
-  const aiTemplate = normalizeTemplateForAI(template);
-  const templateWithPlaceholders = aiTemplate.replace(
+  const normalizedTemplate = normalizeTemplateForAI(template);
+  const aiSeedTemplate = resolveLocalVariationSyntax(normalizedTemplate, {
+    preview: true,
+  });
+  const templateWithPlaceholders = aiSeedTemplate.replace(
     /\{\{([^}]+)\}\}/g,
     (_, key) => `[${key.trim()}]`,
   );
@@ -905,27 +945,40 @@ async function runCampaignLoop(id, campaign, payload) {
 
   let batchCount = 0;
   let inBatch = 0;
+  let reusableVariationTemplate = normalizedTemplate;
+
+  if (useAI) {
+    const sampleContact = contacts.find(Boolean) || {};
+    reusableVariationTemplate = await buildAiSpinTemplate(
+      templateWithPlaceholders,
+      normalizedTemplate,
+      sampleContact,
+      aiRuntime,
+      campaign,
+    );
+    const reusableGroupCount = countLocalVariationGroups(
+      reusableVariationTemplate,
+    );
+    addLog(
+      "info",
+      reusableGroupCount
+        ? `Campaign AI prepared reusable spin template with ${reusableGroupCount} variation groups. Per-message AI calls disabled for this run.`
+        : `Campaign AI fallback template will be reused for this run. Per-message AI calls disabled.`,
+    );
+  }
 
   try {
     for (const contact of contacts) {
       if (campaign.status === "stopped") break;
 
-      // Pick message: fresh AI variation per contact, or plain template
+      // Pick message from the AI spin template, or use the plain saved template.
       let baseTpl;
       if (useAI) {
-        // Get fresh unique variation for this specific contact
-        const filledFallback = fillPlaceholders(aiTemplate, contact);
-        baseTpl = await getUniqueVariation(
-          templateWithPlaceholders,
-          filledFallback,
-          contact,
-          aiRuntime,
-          campaign,
-        );
-        baseTpl = microVary(baseTpl); // add micro human-like tweaks on top
+        baseTpl = resolveLocalVariationSyntax(reusableVariationTemplate);
       } else {
         baseTpl = template;
       }
+      baseTpl = microVary(baseTpl);
       const msg = fillPlaceholders(baseTpl, contact);
 
       const numKey = Object.keys(contact).find((k) =>
