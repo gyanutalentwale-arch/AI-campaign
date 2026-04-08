@@ -2,6 +2,7 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const OpenAI = require('openai');
 const fs = require('fs');
+const path = require('path');
 const QRCode = require('qrcode');
 const { tools, getSystemInstructions } = require('../../botConfig');
 const {
@@ -155,6 +156,12 @@ const RATE_LIMIT = {
     MAX_BURST:       parseInt(process.env.MAX_BURST)       || 4,
     COOLDOWN_PERIOD: parseInt(process.env.COOLDOWN_PERIOD) || 20000,
 };
+const campaignQuickReplyTriggers = new Set(
+    String(process.env.CAMPAIGN_INBOUND_TRIGGER_WORDS || 'yes,ok,okay,interested,start')
+        .split(',')
+        .map(normalizeTriggerText)
+        .filter(Boolean),
+);
 
 // Random delay generator (human-like)
 function getRandomDelay(min, max) {
@@ -219,7 +226,7 @@ async function processMessageQueue() {
         }
 
         // Extract the processable message from the queue
-        const { msg, chat, userId, userName } = messageQueue.splice(msgIndex, 1)[0];
+        const { msg, chat, userId, userName, forceCampaignQuickReply } = messageQueue.splice(msgIndex, 1)[0];
         
         try {
             // Random delay before processing (human-like)
@@ -228,7 +235,7 @@ async function processMessageQueue() {
             await new Promise(resolve => setTimeout(resolve, delay));
             
             // Process the message
-            await handleMessage(msg, chat, userId, userName);
+            await handleMessage(msg, chat, userId, userName, { forceCampaignQuickReply });
             
             // Update tracking AFTER processing
             updateUserTracking(userId);
@@ -271,6 +278,65 @@ function getMessagePreview(msg) {
         return text.length > 80 ? `${text.slice(0, 80)}...` : text;
     }
     return `[${msg?.type || 'message'}]`;
+}
+
+function normalizeCampaignRecipientKey(value) {
+    return String(value || '').replace(/\D/g, '').slice(-10);
+}
+
+function normalizeTriggerText(value) {
+    return String(value || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function isCampaignRecipientUserId(userId) {
+    const key = normalizeCampaignRecipientKey(userId);
+    return !!key && state.campaignRecipients.has(key);
+}
+
+function isCampaignQuickReplyTrigger(body) {
+    const normalized = normalizeTriggerText(body);
+    return !!normalized && campaignQuickReplyTriggers.has(normalized);
+}
+
+function shouldForceCampaignQuickReply(msg) {
+    return !!state.activeCampaignId
+        && isCampaignRecipientUserId(msg?.from)
+        && isCampaignQuickReplyTrigger(msg?.body);
+}
+
+function loadPromptLinks() {
+    try {
+        const raw = fs.readFileSync(path.join(__dirname, '../../prompts/links.json'), 'utf8');
+        return JSON.parse(raw);
+    } catch (_) {
+        return {};
+    }
+}
+
+function applyTemplate(text, values = {}) {
+    return String(text || '').replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] || '');
+}
+
+function buildCampaignQuickReplyText(userName) {
+    const links = loadPromptLinks();
+    const greeting = userName ? `Hi ${userName},` : 'Hi,';
+    const defaultBody = links.portalLink
+        ? `${greeting}\n\nThanks for your interest.\n\nPlease complete your quick registration here:\n${links.portalLink}\n\nReply here once done and our team will take it forward.`
+        : `${greeting}\n\nThanks for your interest. Please share your full name, city, and resume here, and our team will take it forward.`;
+    const template = String(process.env.CAMPAIGN_INBOUND_AUTO_REPLY || '').trim() || defaultBody;
+    return applyTemplate(template, {
+        name: userName || '',
+        greeting,
+        portalLink: links.portalLink || '',
+        helpline: links.helpline || '',
+        whatsapp: links.whatsapp || '',
+        supportEmail: links.supportEmail || '',
+    }).trim();
 }
 
 function shouldIgnoreIncomingMessage(msg) {
@@ -324,6 +390,7 @@ async function resolveUserName(msg, chat, userId) {
 
 async function queueIncomingMessage(msg, source = 'message', options = {}) {
     const { chat: existingChat = null, userName: existingUserName, startProcessing = true } = options;
+    const forceCampaignQuickReply = shouldForceCampaignQuickReply(msg);
 
     if (isStatusBroadcastMessage(msg) || msg.fromMe) {
         return false;
@@ -338,7 +405,7 @@ async function queueIncomingMessage(msg, source = 'message', options = {}) {
         return false;
     }
 
-    if (!state.autoReply) {
+    if (!state.autoReply && !forceCampaignQuickReply) {
         console.log(`Incoming (${source}) from ${msg.from}: ${getMessagePreview(msg)}`);
         console.log(`Auto Reply OFF - incoming message captured but reply skipped for ${msg.from}`);
         return false;
@@ -353,6 +420,9 @@ async function queueIncomingMessage(msg, source = 'message', options = {}) {
 
     if (state.activeCampaignId) {
         console.log(`Campaign ${state.activeCampaignId} active - continuing inbound handling for ${msg.from}`);
+        if (forceCampaignQuickReply) {
+            console.log(`Campaign quick reply armed for ${msg.from}`);
+        }
     }
 
     const chat = existingChat || await msg.getChat();
@@ -361,7 +431,7 @@ async function queueIncomingMessage(msg, source = 'message', options = {}) {
         ? await resolveUserName(msg, chat, userId)
         : existingUserName;
 
-    messageQueue.push({ msg, chat, userId, userName });
+    messageQueue.push({ msg, chat, userId, userName, forceCampaignQuickReply });
     console.log(`Message queued from ${userId}. Queue length: ${messageQueue.length}`);
 
     trackActiveUser(userId, userName);
@@ -637,7 +707,8 @@ client.on('message_create', async msg => {
 });
 
 // Actual message handler (called from queue)
-async function handleMessage(msg, chat, userId, userName) {
+async function handleMessage(msg, chat, userId, userName, options = {}) {
+    const { forceCampaignQuickReply = false } = options;
     let typingInterval = null;
 
     try {
@@ -672,6 +743,12 @@ async function handleMessage(msg, chat, userId, userName) {
             }
         }
         cleanHistory = paired;
+
+        const shouldUseCampaignQuickReply =
+            forceCampaignQuickReply
+            || (!!state.activeCampaignId
+                && isCampaignRecipientUserId(userId)
+                && isCampaignQuickReplyTrigger(msg.body));
 
         // OpenAI Fallback
         async function runOpenAIChat() {
@@ -798,19 +875,29 @@ async function handleMessage(msg, chat, userId, userName) {
 
         // Execute: Gemini 2.5 -> Gemini 2.0 -> OpenAI
         let text, newHistory;
-        try {
-            const result = await runChat(false, 0);
-            text = result.text;
-            newHistory = result.newHistory;
-        } catch (err) {
-            if (isGoogleAuthScopeError(err)) {
-                addLog('error', 'Google OAuth token is missing required Gemini scopes. Re-login from dashboard after updating OAuth consent screen scopes.');
-                text = "Bot permissions update ho rahi hain. Kripya thodi der baad message karein.";
-                newHistory = history;
-            } else {
-                addLog('error', `All AI models failed for ${userId}: ${err.message}`);
-                text = "We're experiencing a brief technical issue. Please try again in a moment. Thank you for your patience!";
-                newHistory = history;
+        if (shouldUseCampaignQuickReply) {
+            text = buildCampaignQuickReplyText(userName);
+            newHistory = [
+                ...cleanHistory,
+                { role: "user", parts: [{ text: msg.body }] },
+                { role: "model", parts: [{ text }] },
+            ];
+            addLog('info', `Campaign quick reply matched for ${userId}`);
+        } else {
+            try {
+                const result = await runChat(false, 0);
+                text = result.text;
+                newHistory = result.newHistory;
+            } catch (err) {
+                if (isGoogleAuthScopeError(err)) {
+                    addLog('error', 'Google OAuth token is missing required Gemini scopes. Re-login from dashboard after updating OAuth consent screen scopes.');
+                    text = "Bot permissions update ho rahi hain. Kripya thodi der baad message karein.";
+                    newHistory = history;
+                } else {
+                    addLog('error', `All AI models failed for ${userId}: ${err.message}`);
+                    text = "We're experiencing a brief technical issue. Please try again in a moment. Thank you for your patience!";
+                    newHistory = history;
+                }
             }
         }
 
