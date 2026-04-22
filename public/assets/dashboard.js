@@ -92,19 +92,14 @@ function toggleSidebar(forceCollapsed) {
   if (controls && qrContainer) controls.insertAdjacentElement('afterend', qrContainer);
 })();
 
-loadGoogleAiAuthStatus();
-
 // --- Socket Events ------------------------------------------------------------
 socket.on('init', (data) => {
   updateStatus(data.botStatus);
-  updateVerifierStatus(data.botVerifierStatus || 'stopped');
   updateStats(data.stats);
   updateEmailStats(data.emailStats);
   data.logs.forEach(addLogEntry);
   updateUsers(data.activeUsers);
   if (data.qrCode) showQR(data.qrCode);
-  if (data.verifierQrCode) showVerifierQR(data.verifierQrCode);
-  if (data.aiAuth) renderGoogleAiAuth(data.aiAuth);
   if (!campaignPresetLoaded) loadCampaignPreset();
   if (!parsedContacts.length) restoreCampaignParsedState();
   restoreActiveCampaignState();
@@ -112,11 +107,7 @@ socket.on('init', (data) => {
   if (!emailPresetLoaded) loadEmailPreset();
 });
 
-socket.on('ai_auth_status', renderGoogleAiAuth);
-
 socket.on('log', addLogEntry);
-socket.on('status_verifier', updateVerifierStatus);
-socket.on('qr_verifier', showVerifierQR);
 socket.on('status', updateStatus);
 socket.on('stats', updateStats);
 socket.on('email_stats', updateEmailStats);
@@ -432,9 +423,7 @@ function updateStats(stats) {
   animateStat('stat-total', stats.total || 0);
   animateStat('stat-today', stats.today || 0);
   animateStat('stat-api', stats.api || 0);
-  animateStat('stat-google-oauth', stats.googleOauth || 0);
   animateStat('stat-gemini', stats.gemini || 0);
-  animateStat('stat-openai', stats.openai || 0);
 }
 
 function updateEmailStats(stats) {
@@ -944,11 +933,7 @@ function applyCampaignProgress(d) {
   const skipped = Number(d.skipped) || 0;
   const done = Number(d.processed) || sent + failed + skipped;
   const aiUsage = d.aiUsage || {};
-  const aiMode = d.aiAuthMode === 'google_oauth'
-    ? 'Google Login'
-    : d.aiAuthMode === 'api_key'
-      ? 'API'
-      : 'Plain';
+  const aiMode = 'API';
 
   document.getElementById('campaign-progress').style.display = 'block';
   document.getElementById('prog-sent').textContent = sent;
@@ -959,7 +944,6 @@ function applyCampaignProgress(d) {
   document.getElementById('prog-bar').style.width = total ? Math.round((done / total) * 100) + '%' : '0%';
   document.getElementById('prog-ai-mode').textContent = aiMode;
   document.getElementById('prog-ai-api').textContent = Number(aiUsage.api) || 0;
-  document.getElementById('prog-ai-google-oauth').textContent = Number(aiUsage.googleOauth) || 0;
 
   if (d.status === 'done' || d.status === 'stopped') {
     document.getElementById('prog-status').textContent = d.status === 'done'
@@ -1119,10 +1103,6 @@ function startCampaign() {
   const template = document.getElementById('campaign-template').value.trim();
   if (!template) return toast('Write a message template first');
   const useAI = document.getElementById('use-ai-variation').checked;
-  const aiAuthMode = getCampaignAiAuthMode();
-  if (useAI && aiAuthMode === 'google_oauth' && !aiAuthState?.googleOauth?.signedIn) {
-    return toast('Campaign AI is set to Google Login. Sign in first or switch to API.');
-  }
   saveCampaignPreset(false);
   document.getElementById('btn-send-campaign').disabled = true;
   document.getElementById('btn-stop-campaign').style.display = 'inline-block';
@@ -1133,15 +1113,13 @@ function startCampaign() {
   document.getElementById('prog-total').textContent = parsedContacts.length;
   document.getElementById('prog-remaining').textContent = parsedContacts.length;
   document.getElementById('prog-bar').style.width = '0%';
-  document.getElementById('prog-ai-mode').textContent = aiAuthMode === 'google_oauth' ? 'Google Login' : 'API';
+  document.getElementById('prog-ai-mode').textContent = 'API';
   document.getElementById('prog-ai-api').textContent = '0';
-  document.getElementById('prog-ai-google-oauth').textContent = '0';
   const body = { contacts: parsedContacts, template,
     minDelay: (parseInt(document.getElementById('delay-min').value) || 15) * 1000,
     maxDelay: (parseInt(document.getElementById('delay-max').value) || 45) * 1000,
     batchSize: parseInt(document.getElementById('batch-size').value) || 15,
-    useAI,
-    aiAuthMode };
+    useAI };
   if (campaignImageData) { body.imageDataUrl = campaignImageData.dataUrl; body.imageMime = campaignImageData.mimetype; body.imageCaption = document.getElementById('img-caption').value.trim(); }
   fetch('/api/campaign/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     .then(r => r.json()).then(d => {
@@ -1162,7 +1140,7 @@ function downloadLog() { if (activeCampaignId) window.open('/api/campaign/' + ac
 function resetCampaignUI() {
   document.getElementById('btn-send-campaign').disabled = !parsedContacts.length;
   document.getElementById('btn-stop-campaign').style.display = 'none';
-  document.getElementById('prog-ai-mode').textContent = getCampaignAiAuthMode() === 'google_oauth' ? 'Google Login' : 'API';
+  document.getElementById('prog-ai-mode').textContent = 'API';
 }
 
 socket.on('campaign_progress', (d) => {

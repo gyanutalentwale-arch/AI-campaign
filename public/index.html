@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Talentwale Bot Dashboard</title>
 <script src="/socket.io/socket.io.js"></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -55,9 +54,7 @@
             <div class="card"><div class="card-label">Total Messages</div><div class="card-value purple" id="stat-total">0</div></div>
             <div class="card"><div class="card-label">Today</div><div class="card-value green" id="stat-today">0</div></div>
             <div class="card"><div class="card-label">API Calls</div><div class="card-value" id="stat-api">0</div></div>
-            <div class="card"><div class="card-label">Google Login Calls</div><div class="card-value green" id="stat-google-oauth">0</div></div>
             <div class="card"><div class="card-label">Gemini Calls</div><div class="card-value" id="stat-gemini">0</div></div>
-            <div class="card"><div class="card-label">OpenAI Calls</div><div class="card-value yellow" id="stat-openai">0</div></div>
           </div>
         </div>
         <div class="overview-block">
@@ -80,40 +77,12 @@
           <button class="btn btn-yellow" id="btn-restart" onclick="botControl('restart')">Restart Sender</button>
           <button class="btn btn-ghost" id="btn-logout" onclick="botLogout()">Logout Sender</button>
         </div>
-        <div style="display:flex;gap:5px;flex-wrap:wrap;">
-          <button class="btn btn-green" id="btn-verifier-start" onclick="connectVerifier()">Connect Verifier</button>
-          <button class="btn btn-red" id="btn-verifier-stop" onclick="botVerifierControl('stop')">Stop Verifier</button>
-          <button class="btn btn-yellow" id="btn-verifier-restart" onclick="botVerifierControl('restart')">Restart Verifier</button>
-          <button class="btn btn-ghost" id="btn-verifier-logout" onclick="botVerifierLogout()">Logout Verifier</button>
-        </div>
-        </div>
-      </div>
-
-      <div class="card" style="padding:18px;margin-bottom:24px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
-          <div style="min-width:240px;flex:1">
-            <div style="font-size:13px;font-weight:700">Gemini Auth Mode</div>
-            <div id="ai-auth-mode" style="font-size:12px;color:var(--muted);margin-top:4px">Loading current auth mode...</div>
-            <div id="ai-auth-session" style="font-size:11px;color:var(--muted);margin-top:8px">No Google OAuth session connected yet.</div>
-            <div id="ai-auth-hint" style="font-size:11px;color:var(--muted);margin-top:8px">Save GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_PROJECT_ID in Configuration to test Google login.</div>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-            <button class="btn btn-ghost" id="btn-use-api-key" onclick="setGeminiAuthMode('api_key')">Use API Key</button>
-            <button class="btn btn-purple" id="btn-use-google-oauth" onclick="setGeminiAuthMode('google_oauth')">Use Google OAuth</button>
-            <button class="btn btn-green" id="btn-google-login" onclick="startGoogleOauthLogin()">Google Login</button>
-            <button class="btn btn-ghost" id="btn-google-test" onclick="testGoogleOauthGemini()">Test Gemini</button>
-            <button class="btn btn-red" id="btn-google-logout" onclick="disconnectGoogleOauth()">Disconnect</button>
-          </div>
         </div>
       </div>
 
       <div id="qr-container">
         <p style="margin-bottom:12px;color:var(--text);font-weight:600;">Sender QR Code</p>
         <img id="qr-img" src="" alt="QR Code" />
-      </div>
-      <div id="qr-verifier-container" style="display:none;margin-top:10px;">
-        <p style="margin-bottom:12px;color:var(--text);font-weight:600;">Verifier QR Code</p>
-        <img id="qr-verifier-img" src="" alt="Verifier QR Code" />
       </div>
     </div>
 
@@ -254,21 +223,6 @@
                   <div style="font-size:13px;font-weight:600">AI Message Variation</div>
                 </div>
               </label>
-            </div>
-            <div style="margin-top:14px;padding:12px;background:#f4f6ff;border-radius:8px;border:1px solid var(--border)">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
-                <div style="min-width:220px;flex:1">
-                  <div style="font-size:13px;font-weight:600">Campaign AI Auth</div>
-                  <div id="campaign-ai-auth-status" style="font-size:12px;color:var(--muted);margin-top:4px">Campaign AI will use API mode.</div>
-                  <div id="campaign-ai-auth-session" style="font-size:11px;color:var(--muted);margin-top:8px">No Google Login session connected yet.</div>
-                  <div id="campaign-ai-auth-hint" style="font-size:11px;color:var(--muted);margin-top:8px">Google Login mode needs an active Google session. API mode uses GEMINI_API_KEY.</div>
-                </div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-                  <button class="btn btn-ghost" id="btn-campaign-use-api" onclick="setCampaignAiAuthMode('api_key')">Use API</button>
-                  <button class="btn btn-purple" id="btn-campaign-use-google-oauth" onclick="setCampaignAiAuthMode('google_oauth')">Use Google Login</button>
-                  <button class="btn btn-green" id="btn-campaign-google-login" onclick="startGoogleOauthLogin()">Google Login</button>
-                </div>
-              </div>
             </div>
           </div>
         </div>
