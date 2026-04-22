@@ -1,11 +1,10 @@
 {
   "name": "talentwale-whatsapp-bot",
   "version": "1.0.0",
-  "description": "Talentwale WhatsApp Career Assistant Bot with Multi-AI Fallback",
+  "description": "Talentwale WhatsApp and Email campaign dashboard with Gemini AI variation",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "fetch-industries": "node fetch_industries.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
