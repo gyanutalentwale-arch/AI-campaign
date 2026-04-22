@@ -4,10 +4,7 @@ const socket = io();
 let autoScroll = true;
 let selectedUser = null;
 let botStatus = 'stopped';
-let aiAuthState = null;
-let googleTokenClient = null;
-let googleAccessToken = '';
-let campaignAiAuthMode = '';
+let campaignAiAuthMode = 'api_key';
 const SIDEBAR_STATE_KEY = 'tw_sidebar_collapsed';
 const SIDEBAR_ANIM_MS = 320;
 let sidebarAnimTimer = null;
@@ -123,258 +120,19 @@ socket.on('history_cleared', (userId) => {
   }
 });
 
-function loadGoogleAiAuthStatus() {
-  return fetch('/api/ai-auth/status')
-    .then(r => r.json())
-    .then(renderGoogleAiAuth)
-    .catch(() => {});
-}
-
-function getConfiguredGoogleClientId() {
-  return aiAuthState?.googleOauth?.configured?.clientId || '';
-}
-
-function getConfiguredGoogleProjectId() {
-  return aiAuthState?.googleOauth?.configured?.projectId || '';
-}
-
 function normalizeCampaignAiAuthMode(mode) {
-  if (mode === 'google_oauth') return 'google_oauth';
-  if (mode === 'api_key') return 'api_key';
-  return '';
+  return mode === 'api_key' ? 'api_key' : 'api_key';
 }
 
 function getCampaignAiAuthMode() {
-  return normalizeCampaignAiAuthMode(campaignAiAuthMode)
-    || normalizeCampaignAiAuthMode(aiAuthState?.mode)
-    || 'api_key';
+  return 'api_key';
 }
 
-function setCampaignAiAuthMode(mode) {
-  campaignAiAuthMode = normalizeCampaignAiAuthMode(mode) || 'api_key';
-  renderCampaignAiAuth();
+function setCampaignAiAuthMode() {
+  campaignAiAuthMode = 'api_key';
 }
 
-function ensureGoogleTokenClient() {
-  if (!window.google?.accounts?.oauth2) {
-    toast('Google Identity script is still loading');
-    return null;
-  }
-
-  const clientId = getConfiguredGoogleClientId();
-  if (!clientId) {
-    toast('Save GOOGLE_OAUTH_CLIENT_ID first');
-    return null;
-  }
-
-  if (!googleTokenClient) {
-    googleTokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: aiAuthState?.googleOauth?.scope || 'https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/generative-language.retriever openid email profile',
-      callback: async (tokenResponse) => {
-        if (tokenResponse?.error) {
-          toast(tokenResponse.error);
-          return;
-        }
-
-        googleAccessToken = tokenResponse.access_token || '';
-        const expiresAt = Date.now() + ((Number(tokenResponse.expires_in) || 3600) * 1000) - 30000;
-        const projectId = getConfiguredGoogleProjectId();
-
-        if (!projectId) {
-          toast('Save GOOGLE_OAUTH_PROJECT_ID first');
-          return;
-        }
-
-        fetch('/api/ai-auth/google-session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            accessToken: googleAccessToken,
-            expiresAt,
-            grantedScope: tokenResponse.scope || '',
-            projectId,
-          }),
-        })
-          .then(async (response) => {
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Could not save Google OAuth session');
-            renderGoogleAiAuth(data);
-            toast('Google OAuth connected');
-          })
-          .catch((error) => {
-            toast(error.message || 'Google OAuth sign-in failed');
-          });
-      },
-      error_callback: () => {
-        toast('Google sign-in was cancelled');
-      },
-    });
-  }
-
-  return googleTokenClient;
-}
-
-function startGoogleOauthLogin() {
-  const tokenClient = ensureGoogleTokenClient();
-  if (!tokenClient) return;
-  tokenClient.requestAccessToken({ prompt: 'consent' });
-}
-
-function setGeminiAuthMode(mode) {
-  fetch('/api/ai-auth/mode', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode }),
-  })
-    .then(async (response) => {
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Could not switch Gemini auth mode');
-      renderGoogleAiAuth(data);
-      toast(mode === 'google_oauth' ? 'Gemini auth mode set to Google OAuth' : 'Gemini auth mode set to API key');
-    })
-    .catch((error) => {
-      toast(error.message || 'Could not switch Gemini auth mode');
-    });
-}
-
-function disconnectGoogleOauth() {
-  const accessToken = googleAccessToken;
-  const finalize = () => {
-    fetch('/api/ai-auth/google-session', { method: 'DELETE' })
-      .then(r => r.json())
-      .then((data) => {
-        googleAccessToken = '';
-        googleTokenClient = null;
-        renderGoogleAiAuth(data);
-        toast('Google OAuth disconnected');
-      })
-      .catch(() => {
-        toast('Could not disconnect Google OAuth');
-      });
-  };
-
-  if (window.google?.accounts?.oauth2 && accessToken) {
-    google.accounts.oauth2.revoke(accessToken, finalize);
-    return;
-  }
-
-  finalize();
-}
-
-function testGoogleOauthGemini() {
-  fetch('/api/ai-auth/test', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
-  })
-    .then(async (response) => {
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Gemini test failed');
-      toast(`Gemini test ok: ${data.text.slice(0, 90)}`);
-    })
-    .catch((error) => {
-      toast(error.message || 'Gemini test failed');
-    });
-}
-
-function renderCampaignAiAuth() {
-  const mode = getCampaignAiAuthMode();
-  const oauth = aiAuthState?.googleOauth || {};
-  const configured = oauth.configured || {};
-  const statusEl = document.getElementById('campaign-ai-auth-status');
-  const sessionEl = document.getElementById('campaign-ai-auth-session');
-  const hintEl = document.getElementById('campaign-ai-auth-hint');
-  const apiBtn = document.getElementById('btn-campaign-use-api');
-  const oauthBtn = document.getElementById('btn-campaign-use-google-oauth');
-  const loginBtn = document.getElementById('btn-campaign-google-login');
-
-  if (statusEl) {
-    statusEl.textContent = mode === 'google_oauth'
-      ? 'Campaign AI will use Google Login.'
-      : 'Campaign AI will use API mode.';
-  }
-
-  if (sessionEl) {
-    sessionEl.textContent = oauth.signedIn
-      ? `Google session ready for ${oauth.email || oauth.name || 'Google user'}.`
-      : 'No Google Login session connected yet.';
-  }
-
-  if (hintEl) {
-    if (mode === 'google_oauth') {
-      hintEl.textContent = oauth.signedIn
-        ? 'Bulk AI variation will call Gemini through Google Login.'
-        : (oauth.prompt || 'Sign in with Google to use Campaign AI in Google Login mode.');
-    } else {
-      hintEl.textContent = 'Bulk AI variation will call Gemini with GEMINI_API_KEY when AI variation is enabled.';
-    }
-  }
-
-  if (apiBtn) {
-    apiBtn.disabled = mode === 'api_key';
-    apiBtn.className = 'btn ' + (mode === 'api_key' ? 'btn-purple' : 'btn-ghost');
-  }
-  if (oauthBtn) {
-    oauthBtn.disabled = mode === 'google_oauth';
-    oauthBtn.className = 'btn ' + (mode === 'google_oauth' ? 'btn-purple' : 'btn-ghost');
-  }
-  if (loginBtn) {
-    loginBtn.disabled = !configured.clientId || !configured.projectId;
-  }
-}
-
-function renderGoogleAiAuth(status) {
-  aiAuthState = status || null;
-  const mode = aiAuthState?.mode || 'api_key';
-  const oauth = aiAuthState?.googleOauth || {};
-  const configured = oauth.configured || {};
-
-  if (!oauth.signedIn) {
-    googleAccessToken = '';
-  }
-
-  const modeEl = document.getElementById('ai-auth-mode');
-  const sessionEl = document.getElementById('ai-auth-session');
-  const hintEl = document.getElementById('ai-auth-hint');
-  const loginBtn = document.getElementById('btn-google-login');
-  const logoutBtn = document.getElementById('btn-google-logout');
-  const testBtn = document.getElementById('btn-google-test');
-  const apiKeyBtn = document.getElementById('btn-use-api-key');
-  const oauthBtn = document.getElementById('btn-use-google-oauth');
-
-  if (modeEl) {
-    modeEl.textContent = mode === 'google_oauth'
-      ? 'Active mode: Google OAuth'
-      : 'Active mode: API key';
-  }
-
-  if (sessionEl) {
-    if (oauth.signedIn) {
-      const expires = oauth.expiresAt ? new Date(oauth.expiresAt).toLocaleString() : 'soon';
-      const scopeNote = oauth.grantedScope && !oauth.grantedScope.includes('generative-language.retriever')
-        ? ' | Gemini scope missing'
-        : '';
-      sessionEl.textContent = `Signed in as ${oauth.email || oauth.name || 'Google user'} | token valid until ${expires}${scopeNote}`;
-    } else {
-      sessionEl.textContent = configured.ready
-        ? 'Google OAuth is configured but not signed in.'
-        : 'Google OAuth is not configured yet.';
-    }
-  }
-
-  if (hintEl) {
-    hintEl.textContent = oauth.prompt || 'Google OAuth session is ready for Gemini testing.';
-  }
-
-  if (loginBtn) loginBtn.disabled = !configured.clientId || !configured.projectId;
-  if (logoutBtn) logoutBtn.disabled = !oauth.signedIn;
-  if (testBtn) testBtn.disabled = !oauth.signedIn;
-  if (apiKeyBtn) apiKeyBtn.disabled = mode === 'api_key';
-  if (oauthBtn) oauthBtn.disabled = !oauth.signedIn || mode === 'google_oauth';
-  renderCampaignAiAuth();
-}
-
+function renderCampaignAiAuth() {}
 // --- Status ------------------------------------------------------------------?
 function updateStatus(status) {
   botStatus = status;
@@ -614,9 +372,8 @@ function savePromptFile() {
 
 // --- Config ------------------------------------------------------------------?
 const CONFIG_GROUPS = {
-  'AI API Keys':    ['GEMINI_API_KEY', 'OPENAI_API_KEY'],
-  'AI Authentication': ['GEMINI_AUTH_MODE', 'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_PROJECT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET', 'GOOGLE_OAUTH_JSON_PATH'],
-  'AI Models':      ['PRIMARY_MODEL', 'FALLBACK_MODEL', 'OPENAI_MODEL'],
+  'AI API Keys':    ['GEMINI_API_KEY'],
+  'AI Models':      ['WA_CAMPAIGN_AI_MODEL'],
   'Campaign AI':    ['WA_CAMPAIGN_AI_ENABLED', 'WA_CAMPAIGN_AI_MODEL', 'WA_AI_MIN_CHARS', 'WA_AI_MAX_CHARS', 'WA_AI_MAX_PARAGRAPHS', 'WA_AI_BLOCKED_TERMS'],
   'Bot Settings':   ['MAX_HISTORY', 'MAX_OUTPUT_TOKENS'],
   'Dashboard':      ['DASHBOARD_PORT'],
@@ -625,7 +382,7 @@ const CONFIG_GROUPS = {
 };
 
 let configState = { groups: [], extras: [] };
-const configOpenGroups = new Set(['AI API Keys', 'AI Authentication', 'AI Models', 'Campaign AI']);
+const configOpenGroups = new Set(['AI API Keys', 'AI Models', 'Campaign AI']);
 
 function loadConfig() {
   fetch('/api/config').then(r => r.json()).then(d => {
@@ -742,10 +499,6 @@ function saveConfig(key) {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || ('Could not save ' + key));
       toast(key + ' updated');
-      if (key === 'GOOGLE_OAUTH_CLIENT_ID' || key === 'GOOGLE_OAUTH_PROJECT_ID' || key === 'GEMINI_AUTH_MODE') {
-        googleTokenClient = null;
-        loadGoogleAiAuthStatus();
-      }
     })
     .catch((error) => {
       toast(error.message || ('Could not save ' + key));
@@ -772,10 +525,6 @@ function addConfigKey() {
     .then(() => {
       toast('Key added');
       loadConfig();
-      if (key === 'GOOGLE_OAUTH_CLIENT_ID' || key === 'GOOGLE_OAUTH_PROJECT_ID' || key === 'GEMINI_AUTH_MODE') {
-        googleTokenClient = null;
-        loadGoogleAiAuthStatus();
-      }
     });
 }
 
@@ -840,7 +589,7 @@ function applyCampaignPreset(preset) {
   document.getElementById('delay-max').value = String(preset.maxDelaySec || 45);
   document.getElementById('batch-size').value = String(preset.batchSize || 15);
   document.getElementById('use-ai-variation').checked = !!preset.useAI;
-  campaignAiAuthMode = normalizeCampaignAiAuthMode(preset.aiAuthMode) || campaignAiAuthMode || normalizeCampaignAiAuthMode(aiAuthState?.mode) || 'api_key';
+  campaignAiAuthMode = normalizeCampaignAiAuthMode(preset.aiAuthMode) || 'api_key';
   const caption = String(preset.imageCaption || '');
   document.getElementById('img-caption').value = caption;
   if (!campaignImageData && caption) document.getElementById('img-caption-wrap').style.display = 'block';
