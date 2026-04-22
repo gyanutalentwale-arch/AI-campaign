@@ -195,66 +195,8 @@ function showQR(qrDataUrl) {
 
 // --- Users -------------------------------------------------------------------
 function updateUsers(users) {
-  const list = Array.isArray(users) ? users : [];
-  const tbody = document.getElementById('users-table');
-  if (tbody) {
-    if (!list.length) {
-      tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:20px">No active users yet</td></tr>';
-    } else {
-      tbody.innerHTML = list.map(u => `
-    <tr>
-      <td style="font-family:monospace;font-size:11px">${u.id}</td>
-      <td>${u.name || 'â€”'}</td>
-      <td>${u.msgCount || 0}</td>
-      <td style="color:var(--muted);font-size:12px">${u.lastSeen ? new Date(u.lastSeen).toLocaleString() : 'â€”'}</td>
-    </tr>`).join('');
-    }
-  }
-
-  // Update user list in history tab
-  const ul = document.getElementById('user-list');
-  if (!ul) return;
-  if (!list.length) {
-    ul.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:13px">No users yet</div>';
-    return;
-  }
-  ul.innerHTML = list.map(u => `
-    <div class="user-item ${selectedUser === u.id ? 'selected' : ''}" onclick="selectUser('${u.id}', '${u.name || u.id}')">
-      <div>
-        <div class="user-name">${u.name || u.id}</div>
-        <div class="user-meta">${u.id} Â· ${u.msgCount || 0} msgs</div>
-      </div>
-    </div>`).join('');
+  void users;
 }
-
-function selectUser(userId, name) {
-  selectedUser = userId;
-  document.getElementById('chat-title').textContent = name;
-  document.getElementById('btn-clear-history').style.display = 'inline-block';
-  document.querySelectorAll('.user-item').forEach(el => el.classList.remove('selected'));
-  event.currentTarget.classList.add('selected');
-  fetch('/api/history/' + encodeURIComponent(userId))
-    .then(r => r.json()).then(d => renderChat(d.history));
-}
-
-function renderChat(history) {
-  const box = document.getElementById('chat-box');
-  if (!history || !history.length) { box.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;margin-top:40px">No messages yet</div>'; return; }
-  box.innerHTML = history.map(m => {
-    const text = m.parts && m.parts[0] ? m.parts[0].text : '';
-    return `<div class="chat-msg ${m.role}">
-      <div class="role">${m.role === 'model' ? 'Bot' : 'User'}</div>
-      <div class="bubble">${escHtml(text)}</div>
-    </div>`;
-  }).join('');
-  box.scrollTop = box.scrollHeight;
-}
-
-function clearHistory() {
-  if (!selectedUser || !confirm('Clear history for this user?')) return;
-  fetch('/api/history/' + encodeURIComponent(selectedUser), { method: 'DELETE' }).then(() => toast('History cleared'));
-}
-
 // --- Logs ---------------------------------------------------------------------
 function normalizeLogText(text) {
   const cp1252Map = {
