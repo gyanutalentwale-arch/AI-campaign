@@ -11,7 +11,7 @@ Not included:
 - Inbound WhatsApp auto-reply/chatbot flows
 - Prompt-manager driven auto-reply logic
 - Google OAuth login for AI
-- OpenAI fallback
+- Alternative AI fallback providers
 
 ## Runtime Flow
 
