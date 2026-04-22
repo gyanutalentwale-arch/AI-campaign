@@ -98,41 +98,6 @@
       <div class="log-box" id="log-box"></div>
     </div>
 
-    <!-- Chat History -->
-    <div class="page" id="page-history">
-      <div class="page-header"><h1>Chat History</h1></div>
-      <div class="history-grid">
-        <div>
-          <div class="section-title">Users</div>
-          <div class="user-list" id="user-list"><div style="padding:16px;color:var(--muted);font-size:13px">No users yet</div></div>
-        </div>
-        <div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-            <div class="section-title" id="chat-title">Select a user</div>
-            <button class="btn btn-red" id="btn-clear-history" style="display:none" onclick="clearHistory()">Clear History</button>
-          </div>
-          <div class="chat-box" id="chat-box"><div style="color:var(--muted);font-size:13px;text-align:center;margin-top:40px">Select a user</div></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Prompt Manager -->
-    <div class="page" id="page-training">
-      <div class="page-header">
-        <h1>Prompt Manager</h1>
-        <button class="btn btn-purple" onclick="savePromptFile()">Save</button>
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-        <button class="btn btn-ghost ptab" data-file="system_prompt.txt" onclick="selectPromptFile(this)">System Prompt</button>
-        <button class="btn btn-ghost ptab" data-file="links.json" onclick="selectPromptFile(this)">Links & Contacts</button>
-        <button class="btn btn-ghost ptab" data-file="industries.json" onclick="selectPromptFile(this)">Industries</button>
-      </div>
-      <div class="card" style="margin-bottom:16px;padding:10px 16px;font-size:12px;color:var(--muted)" id="prompt-hint">
-        Select file
-      </div>
-      <textarea id="training-editor" rows="26" placeholder="Select file..."></textarea>
-    </div>
-
     <!-- Bulk Campaign -->
     <div class="page" id="page-campaign">
       <div class="page-header"><h1>Bulk Campaign</h1></div>
@@ -266,7 +231,6 @@
               <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:10px">
                 <div><div style="font-size:10px;color:var(--muted)">AI MODE</div><div style="font-size:15px;font-weight:700;color:var(--text)" id="prog-ai-mode">API</div></div>
                 <div><div style="font-size:10px;color:var(--muted)">API CALLS</div><div style="font-size:22px;font-weight:700;color:var(--accent)" id="prog-ai-api">0</div></div>
-                <div><div style="font-size:10px;color:var(--muted)">GOOGLE LOGIN CALLS</div><div style="font-size:22px;font-weight:700;color:var(--green)" id="prog-ai-google-oauth">0</div></div>
               </div>
               <div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden;margin-bottom:8px">
                 <div id="prog-bar" style="background:var(--green);height:100%;width:0%;transition:width .4s"></div>
@@ -529,15 +493,6 @@
         </select>
       </div>
       <div id="config-list"></div>
-    </div>
-
-    <!-- Usage Log -->
-    <div class="page" id="page-usage">
-      <div class="page-header">
-        <h1>Usage Log</h1>
-        <button class="btn btn-ghost" onclick="loadUsageLog()">Refresh</button>
-      </div>
-      <div class="log-box" id="usage-log-box" style="height:500px"></div>
     </div>
 
   </main>

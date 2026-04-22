@@ -262,9 +262,9 @@ module.exports = function createVerifierService({
               job.failed++;
               job.failedContacts.push(buildVerifierRecord(contact, "Failed", {
                 Talentwale_Status: "Not Found",
-                Verification_Reason: "WhatsApp not connected for fallback verification",
+                Verification_Reason: "WhatsApp not connected for verification",
               }));
-              addLog("warn", `Verification failed for ${rawNum}: WhatsApp not connected for fallback verification`);
+              addLog("warn", `Verification failed for ${rawNum}: WhatsApp not connected for verification`);
               job.nextIndex++;
               emitJobProgress(id, job);
               continue;
