@@ -264,12 +264,10 @@ function toggleAutoScroll() { autoScroll = !autoScroll; document.getElementById(
 // --- Config ------------------------------------------------------------------?
 const CONFIG_GROUPS = {
   'AI API Keys':    ['GEMINI_API_KEY'],
-  'AI Models':      ['WA_CAMPAIGN_AI_MODEL'],
+  'AI Models':      ['WA_CAMPAIGN_AI_MODEL', 'FALLBACK_MODEL'],
   'Campaign AI':    ['WA_CAMPAIGN_AI_ENABLED', 'WA_CAMPAIGN_AI_MODEL', 'WA_AI_MIN_CHARS', 'WA_AI_MAX_CHARS', 'WA_AI_MAX_PARAGRAPHS', 'WA_AI_BLOCKED_TERMS'],
-  'Bot Settings':   ['MAX_HISTORY', 'MAX_OUTPUT_TOKENS'],
   'Dashboard':      ['DASHBOARD_PORT'],
-  'Rate Limiting':  ['MIN_DELAY', 'MAX_DELAY', 'TYPING_MIN', 'TYPING_MAX', 'MAX_BURST', 'COOLDOWN_PERIOD'],
-  'Email Accounts': ['EMAIL_1_USER', 'EMAIL_1_PASSWORD', 'EMAIL_1_NAME', 'EMAIL_2_USER', 'EMAIL_2_PASSWORD', 'EMAIL_2_NAME', 'EMAIL_3_USER', 'EMAIL_3_PASSWORD', 'EMAIL_3_NAME', 'EMAIL_DAILY_LIMIT'],
+  'Email Accounts': ['EMAIL_1_USER', 'EMAIL_1_PASSWORD', 'EMAIL_1_NAME', 'EMAIL_2_USER', 'EMAIL_2_PASSWORD', 'EMAIL_2_NAME', 'EMAIL_3_USER', 'EMAIL_3_PASSWORD', 'EMAIL_3_NAME', 'EMAIL_DAILY_LIMIT', 'EMAIL_PROVIDER_DAILY_LIMIT'],
 };
 
 let configState = { groups: [], extras: [] };
