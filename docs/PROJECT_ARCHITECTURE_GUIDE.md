@@ -1,70 +1,108 @@
-﻿# Project Architecture Guide (Current)
+﻿# Project Architecture Guide
 
-## Scope
+## Product Scope
 
-This codebase is now campaign-focused:
-- WhatsApp campaign sending
-- WhatsApp number verification
-- Email campaign sending
+This codebase is campaign-focused:
+- WhatsApp bulk sending
+- WhatsApp bulk number verification
+- Email bulk campaigns
 
-Not included:
-- Inbound WhatsApp auto-reply/chatbot flows
-- Prompt-manager driven auto-reply logic
-- Google OAuth login for AI
-- Alternative AI fallback providers
+Not part of this codebase:
+- Inbound WhatsApp chatbot / auto-reply
+- Prompt manager based bot behavior
+- Google OAuth AI auth flow
+- OpenAI model flow
 
-## Runtime Flow
+## High-Level Architecture
 
-1. `index.js` starts Express/socket server from `server.js`.
-2. `whatsapp-runtime.service.js` creates one WhatsApp client session.
-3. Dashboard receives QR/status/log events through Socket.IO.
-4. Campaign and verifier APIs use the same connected WhatsApp client (`state.botClient`).
+- **Entry layer**: `index.js`, `server.js`
+- **API layer**: `src/routes/*` + `src/controllers/*`
+- **Business layer**: `src/services/*`
+- **UI layer**: `public/index.html`, `public/assets/dashboard.js`, `public/assets/dashboard.css`
 
-## Core Services
+## Backend Flow
 
-- `src/services/whatsapp-runtime.service.js`
-  - Owns WhatsApp session lifecycle (start/QR/ready/disconnect/logout)
+1. `index.js` loads env and starts HTTP server.
+2. `server.js` initializes Express, Socket.IO, shared `state`, and registers routes.
+3. `whatsapp-runtime.service.js` manages the single WhatsApp Web client lifecycle.
+4. Campaign/verifier/email services execute long-running jobs and emit progress via Socket.IO.
+
+## Shared State (`app-state.model.js`)
+
+- `botStatus`, `qrCode`, `logs`
+- `botClient`, `botInitFn`, `botDestroyFn`, `botLogoutFn`
+- `activeCampaignId`, `activeVerifierId`
+- usage stats and email stats
+
+## Routes Overview
+
+### Bot
+- `POST /api/bot/start`
+- `POST /api/bot/stop`
+- `POST /api/bot/restart`
+- `POST /api/bot/logout`
+
+### Campaign (WhatsApp)
+- `POST /api/campaign/parse`
+- `POST /api/campaign/parse-sheet`
+- `POST /api/campaign/start`
+- `POST /api/campaign/stop/:id`
+- `GET /api/campaign/active`
+- `GET /api/campaign/:id/log`
+- `GET /api/campaign/preset`
+- `POST /api/campaign/preset`
+
+### Verifier
+- `POST /api/verifier/parse-upload`
+- `POST /api/verifier/parse-sheet`
+- `POST /api/verifier/start`
+- `POST /api/verifier/pause`
+- `POST /api/verifier/resume`
+- `POST /api/verifier/stop`
+- `GET /api/verifier/active`
+- `GET /api/verifier/log/:id`
+
+### Email
+- `POST /api/email/parse`
+- `POST /api/email/parse-sheet`
+- `POST /api/email/start`
+- `POST /api/email/stop/:id`
+- `GET /api/email/active`
+- `GET /api/email/:id/log`
+- `GET /api/email/accounts`
+- `GET /api/email/test`
+- `GET /api/email/preset`
+- `POST /api/email/preset`
+
+### Config
+- `GET /api/stats`
+- `GET /api/logs`
+- `GET /api/config`
+- `POST /api/config`
+- `GET /api/groups`
+- `GET /api/groups/:groupId/export`
+
+## File Ownership Guide
 
 - `src/services/campaign.service.js`
-  - Parses contacts (file/sheet/group)
-  - Optionally applies Gemini AI message variation
-  - Verifies recipient availability on WhatsApp before send
-  - Sends messages/media in paced batches
+  - WhatsApp campaign parsing, templating, AI variation, send loop
 
 - `src/services/verifier.service.js`
-  - Parses contacts
-  - Optionally checks Talentwale candidate presence
-  - Verifies WhatsApp availability using same sender account client
-  - Exposes downloadable result CSVs (valid/skipped/invalid/failed)
+  - Bulk verification jobs, optional Talentwale match, CSV outputs
 
 - `src/services/email.service.js`
-  - Parses contacts
-  - Sends templated HTML email campaigns with account-aware limits
+  - Email contacts parse + SMTP send engine + account limits
 
-- `src/services/config.service.js`
-  - Dashboard stats, logs, `.env` config CRUD, group listing/export
-
-## API Route Groups
-
-- `src/routes/bot.routes.js`
-  - `/api/bot/start`, `/stop`, `/restart`, `/logout`
-
-- `src/routes/campaign.routes.js`
-  - Parse/start/stop/active/log/preset endpoints for WhatsApp campaigns
-
-- `src/routes/verifier.routes.js`
-  - Parse/start/pause/resume/stop/active/log endpoints for verification
-
-- `src/routes/email.routes.js`
-  - Parse/start/stop/active/log/accounts/test/preset endpoints for email campaigns
-
-- `src/routes/config.routes.js`
-  - Stats/logs/config and group export endpoints
-
-## Frontend
-
-- `public/index.html`
-  - Pages: Overview, Live Logs, Bulk Campaign, Email Campaign, Bulk Verifier, Configuration
+- `src/services/whatsapp-runtime.service.js`
+  - WhatsApp auth/qr/ready/disconnect behavior
 
 - `public/assets/dashboard.js`
-  - Handles socket events, status updates, and each page workflow
+  - Frontend actions, API calls, socket listeners, progress rendering
+
+## Runtime Artifacts (ignored in git)
+
+- `whatsapp_session/`
+- `campaign_preset.json`
+- `email_preset.json`
+- `email_usage_state.json`
+- `*.log`
