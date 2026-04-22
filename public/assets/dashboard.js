@@ -21,9 +21,7 @@ document.querySelectorAll('.nav-item').forEach(item => {
       document.getElementById('page-verify').classList.add('active');
       restoreActiveVerifierState();
     }
-    if (item.dataset.page === 'training') loadTraining();
     if (item.dataset.page === 'config') loadConfig();
-    if (item.dataset.page === 'usage') loadUsageLog();
     if (item.dataset.page === 'campaign') {
       updatePreview();
       if (!campaignPresetLoaded) loadCampaignPreset();
@@ -336,39 +334,6 @@ function detectLevel(msg) {
 
 function clearLogs() { document.getElementById('log-box').innerHTML = ''; }
 function toggleAutoScroll() { autoScroll = !autoScroll; document.getElementById('autoscroll-label').textContent = autoScroll ? 'ON' : 'OFF'; }
-
-// --- Prompt Manager ----------------------------------------------------------
-const PROMPT_HINTS = {
-  'system_prompt.txt': 'Main system prompt.',
-  'links.json':        'Links and contacts.',
-  'industries.json':   'Industry IDs for jobs.',
-};
-
-let activePromptFile = null;
-
-function loadTraining() {
-  selectPromptFile(document.querySelector('.ptab'));
-}
-
-function selectPromptFile(btn) {
-  const file = btn.dataset.file;
-  activePromptFile = file;
-  document.querySelectorAll('.ptab').forEach(b => b.classList.toggle('active', b === btn));
-  document.getElementById('prompt-hint').textContent = PROMPT_HINTS[file] || file;
-  const editor = document.getElementById('training-editor');
-  editor.value = 'Loading...';
-  fetch('/api/prompt-file?file=' + encodeURIComponent(file))
-    .then(r => r.json()).then(d => { editor.value = d.data || ''; });
-}
-
-function savePromptFile() {
-  if (!activePromptFile) return toast('Select a file first');
-  fetch('/api/prompt-file', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ file: activePromptFile, data: document.getElementById('training-editor').value })
-  }).then(() => toast('? Saved! Changes apply on next message (no restart needed).'));
-}
 
 // --- Config ------------------------------------------------------------------?
 const CONFIG_GROUPS = {
@@ -1395,51 +1360,6 @@ function toast(msg) {
   t.textContent = msg; t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 3000);
 }
-
-
-let botVerifierStatus = 'stopped';
-function updateVerifierStatus(status) {
-  botVerifierStatus = status;
-  const badge = document.getElementById('status-badge-verifier');
-  const text = document.getElementById('status-text-verifier');
-  const connectBtn = document.getElementById('btn-verifier-start');
-  if(!badge) return;
-  badge.className = 'status-badge ' + status;
-  const labels = { ready: 'Ready', stopped: 'Stopped', starting: 'Starting...', qr: 'Waiting QR' };
-  text.textContent = "Verifier: " + (labels[status] || status);
-  if (connectBtn) {
-    connectBtn.disabled = status !== 'stopped';
-    connectBtn.textContent = status === 'ready' ? 'Verifier Connected' : status === 'starting' ? 'Connecting...' : status === 'qr' ? 'Waiting QR' : 'Connect Verifier';
-  }
-  document.getElementById('btn-verifier-stop').disabled = status === 'stopped';
-  if (status !== 'qr') document.getElementById('qr-verifier-container').style.display = 'none';
-}
-
-function showVerifierQR(qrDataUrl) {
-  const c = document.getElementById('qr-verifier-container');
-  c.style.display = 'block';
-  document.getElementById('qr-verifier-img').src = qrDataUrl;
-  updateVerifierStatus('qr');
-}
-
-function connectVerifier() {
-  if (botVerifierStatus === 'ready') { toast('Verifier already connected'); return; }
-  fetch('/api/botVerifier/start', { method: 'POST' }).then(r => r.json()).then(d => {
-    if (!d.ok) toast(d.msg || 'Start failed');
-  });
-}
-function botVerifierControl(action) {
-  fetch('/api/botVerifier/' + action, { method: 'POST' }).then(r => r.json()).then(d => {
-    if (!d.ok) toast(d.msg || action + ' failed');
-  });
-}
-function botVerifierLogout() {
-  if (!confirm('Logout verifier session?')) return;
-  fetch('/api/botVerifier/logout', { method: 'POST' }).then(r => r.json()).then(d => {
-    toast(d.msg || 'Logged out');
-  });
-}
-
 
 let verifyParsedContacts = [];
 let activeVerifyJobId = null;
