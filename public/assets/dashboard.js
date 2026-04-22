@@ -2,7 +2,6 @@
 
 const socket = io();
 let autoScroll = true;
-let selectedUser = null;
 let botStatus = 'stopped';
 let campaignAiAuthMode = 'api_key';
 const SIDEBAR_STATE_KEY = 'tw_sidebar_collapsed';
@@ -108,15 +107,6 @@ socket.on('stats', updateStats);
 socket.on('email_stats', updateEmailStats);
 socket.on('qr', showQR);
 socket.on('users_update', updateUsers);
-socket.on('history_update', (data) => {
-  if (selectedUser === data.userId) renderChat(data.history);
-});
-socket.on('history_cleared', (userId) => {
-  const box = document.getElementById('chat-box');
-  if (selectedUser === userId && box) {
-    box.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;margin-top:40px">History cleared</div>';
-  }
-});
 
 function normalizeCampaignAiAuthMode(mode) {
   return mode === 'api_key' ? 'api_key' : 'api_key';
