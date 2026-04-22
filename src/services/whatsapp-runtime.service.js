@@ -34,7 +34,6 @@ module.exports = function createWhatsAppRuntime({ io, state, addLog }) {
     } catch (_) {}
   };
   state.botClient = null;
-  state.processUnreadFn = null;
 
   client.on("qr", async (qr) => {
     addLog("info", "Sender QR code generated. Scan it from the dashboard.");

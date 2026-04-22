@@ -8,7 +8,6 @@ module.exports = function registerConfigRoutes(ctx) {
 
   app.get("/api/stats", configController.getStats);
   app.get("/api/logs", configController.getLogs);
-  app.get("/api/usage-log", configController.getUsageLog);
 
   app.get("/api/config", configController.getConfig);
   app.post("/api/config", configController.updateConfig);

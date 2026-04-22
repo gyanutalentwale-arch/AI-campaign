@@ -90,10 +90,6 @@ function buildSocketInitPayload() {
     stats: state.messageStats,
     emailStats: state.emailStats,
     logs: state.logs.slice(-100),
-    activeUsers: Array.from(state.activeUsers.entries()).map(([id, user]) => ({
-      id,
-      ...user,
-    })),
     qrCode: state.qrCode,
   };
 }

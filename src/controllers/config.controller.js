@@ -22,14 +22,6 @@ module.exports = function createConfigController(configService) {
       }
     },
 
-    getUsageLog(req, res) {
-      try {
-        res.json({ log: configService.getUsageLog() });
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
     getConfig(req, res) {
       try {
         res.json({ lines: configService.getConfigLines() });

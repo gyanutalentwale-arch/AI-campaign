@@ -10,24 +10,12 @@ module.exports = function createConfigService({ state, addLog, fs }) {
       botStatus: state.botStatus,
       stats: state.messageStats,
       emailStats: state.emailStats,
-      activeUsers: Array.from(state.activeUsers.entries()).map(([id, user]) => ({
-        id,
-        ...user,
-      })),
       qrCode: state.qrCode,
     };
   }
 
   function getLogs(limit = 100) {
     return state.logs.slice(-Math.max(parseInt(limit, 10) || 100, 1));
-  }
-
-  function getUsageLog() {
-    try {
-      return fs.readFileSync("bot_usage.log", "utf8");
-    } catch (_) {
-      return "";
-    }
   }
 
   function getConfigLines() {
@@ -124,7 +112,6 @@ module.exports = function createConfigService({ state, addLog, fs }) {
     getConfigLines,
     getLogs,
     getStats,
-    getUsageLog,
     listGroups,
     updateConfig,
   };

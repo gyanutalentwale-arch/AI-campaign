@@ -92,7 +92,6 @@ socket.on('init', (data) => {
   updateStats(data.stats);
   updateEmailStats(data.emailStats);
   data.logs.forEach(addLogEntry);
-  updateUsers(data.activeUsers);
   if (data.qrCode) showQR(data.qrCode);
   if (!campaignPresetLoaded) loadCampaignPreset();
   if (!parsedContacts.length) restoreCampaignParsedState();
@@ -106,7 +105,6 @@ socket.on('status', updateStatus);
 socket.on('stats', updateStats);
 socket.on('email_stats', updateEmailStats);
 socket.on('qr', showQR);
-socket.on('users_update', updateUsers);
 
 function normalizeCampaignAiAuthMode(mode) {
   return mode === 'api_key' ? 'api_key' : 'api_key';
@@ -193,10 +191,6 @@ function showQR(qrDataUrl) {
   updateStatus('qr');
 }
 
-// --- Users -------------------------------------------------------------------
-function updateUsers(users) {
-  void users;
-}
 // --- Logs ---------------------------------------------------------------------
 function normalizeLogText(text) {
   const cp1252Map = {
@@ -423,15 +417,6 @@ function addConfigKey() {
       toast('Key added');
       loadConfig();
     });
-}
-
-// --- Usage Log ---------------------------------------------------------------?
-function loadUsageLog() {
-  fetch('/api/usage-log').then(r => r.json()).then(d => {
-    const box = document.getElementById('usage-log-box');
-    const lines = (d.log || '').trim().split('\n').reverse();
-    box.innerHTML = lines.map(l => `<div class="log-entry info"><span class="msg">${escHtml(l)}</span></div>`).join('');
-  });
 }
 
 // --- Bot Control -------------------------------------------------------------

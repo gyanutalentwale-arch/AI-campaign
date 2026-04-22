@@ -28,7 +28,6 @@ function createInitialState() {
     logs: [],
     messageStats: createEmptyMessageStats(),
     emailStats: createEmptyEmailStats(),
-    activeUsers: new Map(),
     botClient: null,
     botInitFn: null,
     botDestroyFn: null,
@@ -37,7 +36,6 @@ function createInitialState() {
     activeVerifierId: null,
     lastVerifierJobId: null,
     campaignRecipients: new Set(),
-    processUnreadFn: null,
     persistRuntimeState: () => {},
   };
 }
