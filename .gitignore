@@ -7,12 +7,10 @@ node_modules/
 
 # WhatsApp Web JS Caches & Auth Sessions
 whatsapp_session/
-whatsapp_session_verifier/
 .wwebjs_cache/
 .wwebjs_auth/
 
-# Local Bot Data & States
-data/
+# Local Bot State Files
 *_preset.json
 *_usage_state.json
 

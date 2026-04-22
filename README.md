@@ -1,53 +1,76 @@
-﻿# Talentwale Campaign Bot
+﻿# Talentwale Campaign Dashboard
 
-A Node.js dashboard to run:
+Campaign-first Node.js app for:
 - WhatsApp bulk campaigns
-- WhatsApp bulk number verification
+- WhatsApp number verification
 - Email campaigns (multi SMTP)
 
-The system uses a single WhatsApp session/account for both sending and verification.
-Inbound auto-reply/chatbot flows are removed.
-AI message variation is Gemini-only.
+Single WhatsApp account is used for both sender and verifier flow.
+Inbound chatbot/auto-reply flow is intentionally removed.
+AI variation is Gemini-only.
 
-## Stack
+## Quick Start
 
-- Node.js + Express
-- whatsapp-web.js
-- Socket.IO
-- Gemini (`@google/generative-ai`)
-- Nodemailer, Multer, XLSX
-
-## Setup
-
-1. Install dependencies:
+1. Install dependencies
 ```bash
 npm install
 ```
 
-2. Create environment file:
+2. Create env file
 ```bash
 cp .env.example .env
 ```
 
-3. Update required keys/settings in `.env`:
+3. Fill required values in `.env`
 - `GEMINI_API_KEY`
 - `DASHBOARD_PORT`
-- Email account variables (`EMAIL_1_USER`, `EMAIL_1_PASSWORD`, etc.)
+- `EMAIL_1_USER`, `EMAIL_1_PASSWORD`, `EMAIL_1_NAME`
 
-4. Start app:
+4. Run
 ```bash
 npm start
 ```
 
-5. Open dashboard:
+5. Open dashboard
 - `http://localhost:<DASHBOARD_PORT>`
 
-## Main Modules
+## Project Layout
 
-- `index.js`, `server.js`: app bootstrap and sockets
-- `src/services/whatsapp-runtime.service.js`: single WhatsApp runtime
-- `src/services/campaign.service.js`: WhatsApp campaign send flow + Gemini variation
-- `src/services/verifier.service.js`: bulk WhatsApp number verification
-- `src/services/email.service.js`: email campaign engine
-- `src/routes/*`: API routes for bot/config/campaign/email/verifier
-- `public/*`: dashboard UI
+```text
+.
+|-- index.js                     # App bootstrap (starts HTTP server)
+|-- server.js                    # Express + Socket.IO setup, shared state
+|-- src/
+|   |-- routes/                  # API route registration
+|   |-- controllers/             # Request/response handlers
+|   |-- services/                # Business logic (campaign, email, verifier, bot)
+|   `-- models/                  # In-memory app state shape
+|-- public/
+|   |-- index.html               # Dashboard markup
+|   `-- assets/
+|       |-- dashboard.js         # Dashboard behavior
+|       `-- dashboard.css        # Dashboard styles
+`-- docs/
+    `-- PROJECT_ARCHITECTURE_GUIDE.md
+```
+
+## Main Runtime Flow
+
+1. `index.js` starts the server from `server.js`.
+2. `whatsapp-runtime.service.js` creates and manages one WhatsApp client session.
+3. Dashboard gets real-time updates through Socket.IO (`status`, `qr`, `log`, campaign progress).
+4. Campaign + verifier both use the same connected `state.botClient`.
+
+## Where To Change What
+
+- WhatsApp connect lifecycle: `src/services/whatsapp-runtime.service.js`
+- WhatsApp campaign send logic: `src/services/campaign.service.js`
+- Number verification logic: `src/services/verifier.service.js`
+- Email campaign logic: `src/services/email.service.js`
+- Dashboard behavior/UI actions: `public/assets/dashboard.js`
+- API route wiring: `src/routes/index.js`
+
+## Notes
+
+- Preset/state files (`campaign_preset.json`, `email_preset.json`, `email_usage_state.json`) are runtime artifacts.
+- WhatsApp session cache is stored in `whatsapp_session/` and ignored by git.
