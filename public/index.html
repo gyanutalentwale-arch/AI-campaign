@@ -107,29 +107,6 @@
         </div>
       </div>
 
-      <!-- Auto Reply Toggle -->
-      <div class="card" style="padding:14px 18px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between">
-        <div>
-          <div style="font-size:13px;font-weight:600">Auto Reply</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px" id="autoreply-desc">OFF - Replies disabled</div>
-        </div>
-        <label style="position:relative;display:inline-block;width:48px;height:26px;cursor:pointer">
-          <input type="checkbox" id="autoreply-toggle" style="opacity:0;width:0;height:0" onchange="toggleAutoReply(this.checked)">
-          <span id="autoreply-slider" style="position:absolute;inset:0;background:var(--border);border-radius:26px;transition:.3s"></span>
-          <span id="autoreply-knob" style="position:absolute;left:3px;top:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:.3s"></span>
-        </label>
-      </div>
-
-      <div class="card" style="padding:16px 18px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
-        <div style="min-width:240px;flex:1">
-          <div style="font-size:13px;font-weight:600">Unread Messages Scan</div>
-          <div id="unread-scan-desc" style="font-size:11px;color:var(--muted);margin-top:4px">Unread WhatsApp messages ko scan karega aur Auto Reply ON hone par unko queue me dal kar one-by-one reply start karega.</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-purple" id="btn-scan-unread" onclick="scanUnreadMessages()">Scan Unread Now</button>
-        </div>
-      </div>
-
       <div id="qr-container">
         <p style="margin-bottom:12px;color:var(--text);font-weight:600;">Sender QR Code</p>
         <img id="qr-img" src="" alt="QR Code" />

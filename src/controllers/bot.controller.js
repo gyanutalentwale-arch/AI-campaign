@@ -41,45 +41,5 @@ module.exports = function createBotController(botService) {
         sendError(res, error);
       }
     },
-
-    async startVerifier(req, res) {
-      try {
-        res.json(await botService.startVerifier());
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
-    async stopVerifier(req, res) {
-      try {
-        res.json(await botService.stopVerifier());
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
-    async restartVerifier(req, res) {
-      try {
-        res.json(await botService.restartVerifier());
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
-    async logoutVerifier(req, res) {
-      try {
-        res.json(await botService.logoutVerifier());
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
-    async scanUnread(req, res) {
-      try {
-        res.json(await botService.scanUnread());
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
   };
 };

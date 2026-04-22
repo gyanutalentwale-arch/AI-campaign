@@ -1,11 +1,6 @@
 const axios = require('axios');
 const XLSX = require('xlsx');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const {
-  extractTextFromContent,
-  generateContentWithGoogleOauth,
-  isGoogleOauthSessionValid,
-} = require("./gemini-oauth.service");
 
 module.exports = function createCampaignService({
   io,
@@ -24,7 +19,6 @@ const DEFAULT_CAMPAIGN_PRESET = {
   maxDelaySec: 45,
   batchSize: 15,
   useAI: false,
-  aiAuthMode: "",
   imageCaption: "",
 };
 
@@ -32,12 +26,6 @@ function createHttpError(status, message) {
   const error = new Error(message);
   error.status = status;
   return error;
-}
-
-function normalizeCampaignAiAuthMode(value, fallback = "api_key") {
-  if (value === "google_oauth") return "google_oauth";
-  if (value === "api_key") return "api_key";
-  return fallback;
 }
 
 function normalizeCampaignPreset(input = {}) {
@@ -61,7 +49,6 @@ function normalizeCampaignPreset(input = {}) {
       20,
     ),
     useAI: !!input.useAI,
-    aiAuthMode: normalizeCampaignAiAuthMode(input.aiAuthMode, ""),
     imageCaption: String(input.imageCaption || "").trim(),
   };
 }
@@ -297,7 +284,6 @@ function createCampaignAiUsage() {
   return {
     total: 0,
     api: 0,
-    googleOauth: 0,
   };
 }
 
@@ -318,7 +304,7 @@ function buildCampaignProgressPayload(id, campaign, extra = {}) {
     processed: getCampaignProcessedCount(campaign),
     total: campaign.total,
     status: campaign.status,
-    aiAuthMode: campaign.aiAuthMode || "api_key",
+    aiAuthMode: "api_key",
     aiUsage: { ...(campaign.aiUsage || createCampaignAiUsage()) },
     ...extra,
   };
@@ -328,17 +314,13 @@ function emitCampaignProgress(id, campaign, extra = {}) {
   io.emit("campaign_progress", buildCampaignProgressPayload(id, campaign, extra));
 }
 
-function trackCampaignAiUsage(campaign, mode) {
+function trackCampaignAiUsage(campaign) {
   if (!campaign) return;
   if (!campaign.aiUsage) {
     campaign.aiUsage = createCampaignAiUsage();
   }
   campaign.aiUsage.total++;
-  if (mode === "google_oauth") {
-    campaign.aiUsage.googleOauth++;
-  } else {
-    campaign.aiUsage.api++;
-  }
+  campaign.aiUsage.api++;
 }
 
 function extractUrls(text) {
@@ -685,7 +667,6 @@ async function buildAiSpinTemplate(
 ) {
   const aiConfig = aiRuntime?.config || getCampaignAIConfig();
   const modelName = aiRuntime?.model || aiConfig.model;
-  const authMode = aiRuntime?.mode || "api_key";
   const toneSet = Array.from({ length: Math.min(TONES.length, 5) }, () => {
     const tone = TONES[toneIndex % TONES.length];
     toneIndex++;
@@ -724,37 +705,16 @@ Template:
 ${templateWithPlaceholders}`;
 
   try {
-    const usageLabel =
-      authMode === "google_oauth"
-        ? `Gemini OAuth (${modelName})`
-        : `Gemini API Key (${modelName})`;
+    const usageLabel = `Gemini API Key (${modelName})`;
 
     recordModelCallUsage(usageLabel, "wa_campaign_ai");
-    trackCampaignAiUsage(campaign, authMode);
+    trackCampaignAiUsage(campaign);
 
     const fallback = formatForWhatsApp(String(fallbackTemplate || ""));
-    let rawText = "";
-
-    if (authMode === "google_oauth") {
-      const oauthResult = await generateContentWithGoogleOauth({
-        accessToken: aiRuntime.googleOauth.accessToken,
-        projectId: aiRuntime.googleOauth.projectId,
-        model: modelName,
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        systemInstruction: {
-          parts: [{ text: "Reply in plain text only with the final WhatsApp message." }],
-        },
-        generationConfig: {
-          maxOutputTokens: parseInt(process.env.WA_AI_MAX_OUTPUT_TOKENS, 10) || 900,
-        },
-      });
-      rawText = extractTextFromContent(oauthResult?.candidates?.[0]?.content);
-    } else {
-      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: modelName });
-      const result = await model.generateContent(prompt);
-      rawText = result.response.text();
-    }
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: modelName });
+    const result = await model.generateContent(prompt);
+    const rawText = result.response.text();
 
     if (!rawText) {
       throw new Error("Campaign AI returned an empty response.");
@@ -868,20 +828,14 @@ function saveCampaignPresetData(input = {}) {
   return saveCampaignPreset(input);
 }
 
-function resolveCampaignAiRuntime(requestedMode) {
+function resolveCampaignAiRuntime() {
   const aiConfig = getCampaignAIConfig();
-  const mode = normalizeCampaignAiAuthMode(
-    requestedMode,
-    state.aiAuth?.mode === "google_oauth" ? "google_oauth" : "api_key",
-  );
 
   return {
-    mode,
+    mode: "api_key",
     model: aiConfig.model,
     config: aiConfig,
-    googleOauth: state.aiAuth?.googleOauth || null,
     hasApiKey: Boolean(process.env.GEMINI_API_KEY),
-    hasGoogleOauthSession: isGoogleOauthSessionValid(state.aiAuth?.googleOauth),
   };
 }
 
@@ -893,7 +847,6 @@ async function runCampaignLoop(id, campaign, payload) {
     maxDelay,
     batchSize,
     useAI,
-    aiAuthMode,
     imageDataUrl,
     imageMime,
     imageCaption,
@@ -903,13 +856,12 @@ async function runCampaignLoop(id, campaign, payload) {
   const max = Math.max(parseInt(maxDelay, 10) || 45000, min + 5000);
   const batch = Math.min(parseInt(batchSize, 10) || 15, 20);
   const { MessageMedia } = require("whatsapp-web.js");
-  const aiRuntime = resolveCampaignAiRuntime(aiAuthMode);
+  const aiRuntime = resolveCampaignAiRuntime();
   const campaignAI = aiRuntime.config;
-  campaign.aiAuthMode = aiRuntime.mode;
+  campaign.aiAuthMode = "api_key";
 
   if (useAI) {
-    const modeLabel =
-      aiRuntime.mode === "google_oauth" ? "Google Login" : "API Key";
+    const modeLabel = "API Key";
     addLog(
       "info",
       `Campaign AI enabled with model ${campaignAI.model} via ${modeLabel}`,
@@ -1005,10 +957,8 @@ async function runCampaignLoop(id, campaign, payload) {
           continue;
         }
 
-        // 1st login (Verifier) se number verify hoga
-        const verifier = state.botVerifierClient || state.botClient; // fallback if verifier not running
         const verification = await verifyWhatsAppRecipient(
-          verifier,
+          state.botClient,
           waId,
         );
         if (!verification.registered) {
@@ -1184,7 +1134,6 @@ function startCampaign(payload = {}) {
     maxDelay,
     batchSize,
     useAI,
-    aiAuthMode,
     imageDataUrl,
     imageMime,
     imageCaption,
@@ -1197,23 +1146,17 @@ function startCampaign(payload = {}) {
     throw createHttpError(400, "Bot not connected. Start the bot first.");
   }
 
-  const aiRuntime = resolveCampaignAiRuntime(aiAuthMode);
+  const aiRuntime = resolveCampaignAiRuntime();
   if (useAI && !aiRuntime.config.enabled) {
     throw createHttpError(
       400,
       "Campaign AI is disabled. Enable WA_CAMPAIGN_AI_ENABLED or turn off AI Message Variation.",
     );
   }
-  if (useAI && aiRuntime.mode === "google_oauth" && !aiRuntime.hasGoogleOauthSession) {
+  if (useAI && !aiRuntime.hasApiKey) {
     throw createHttpError(
       400,
-      "Google Login mode is selected for Campaign AI, but the Google session is missing or expired. Sign in again or switch to API Key.",
-    );
-  }
-  if (useAI && aiRuntime.mode === "api_key" && !aiRuntime.hasApiKey) {
-    throw createHttpError(
-      400,
-      "API Key mode is selected for Campaign AI, but GEMINI_API_KEY is missing. Add the key or switch to Google Login.",
+      "GEMINI_API_KEY is missing. Add the key or turn off AI Message Variation.",
     );
   }
 
@@ -1231,7 +1174,6 @@ function startCampaign(payload = {}) {
       ),
       batchSize: parseInt(batchSize, 10) || 15,
       useAI: !!useAI,
-      aiAuthMode: aiRuntime.mode,
       imageCaption: String(imageCaption || ""),
     });
   } catch (e) {
@@ -1246,7 +1188,7 @@ function startCampaign(payload = {}) {
     sent: 0,
     failed: 0,
     skipped: 0,
-    aiAuthMode: aiRuntime.mode,
+    aiAuthMode: "api_key",
     aiUsage: createCampaignAiUsage(),
     log: [],
   };
@@ -1273,12 +1215,11 @@ function startCampaign(payload = {}) {
     maxDelay,
     batchSize,
     useAI,
-    aiAuthMode: aiRuntime.mode,
     imageDataUrl,
     imageMime,
     imageCaption,
   });
-  return { id, aiAuthMode: aiRuntime.mode };
+  return { id, aiAuthMode: "api_key" };
 }
 
 function stopCampaign(id) {

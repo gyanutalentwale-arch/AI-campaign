@@ -183,9 +183,6 @@ module.exports = function createVerifierService({
   }
 
   function getReadyVerifierClient() {
-    if (state.botVerifierStatus === "ready" && state.botVerifierClient) {
-      return state.botVerifierClient;
-    }
     if (state.botStatus === "ready" && state.botClient) {
       return state.botClient;
     }
@@ -357,7 +354,7 @@ module.exports = function createVerifierService({
     }
 
     if (!useTalentwaleVerification && !getReadyVerifierClient()) {
-      throw createHttpError(400, "Connect WhatsApp sender or verifier before starting verification.");
+      throw createHttpError(400, "Connect WhatsApp first before starting verification.");
     }
 
     let talentwaleSession = null;

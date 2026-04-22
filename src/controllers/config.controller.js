@@ -30,46 +30,6 @@ module.exports = function createConfigController(configService) {
       }
     },
 
-    getUsers(req, res) {
-      try {
-        res.json(configService.getUsers());
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
-    getHistory(req, res) {
-      try {
-        res.json({ history: configService.getHistory(req.params.userId) });
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
-    clearHistory(req, res) {
-      try {
-        res.json(configService.clearHistory(req.params.userId));
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
-    getPromptFile(req, res) {
-      try {
-        res.json({ data: configService.getPromptFile(req.query.file) });
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
-    savePromptFile(req, res) {
-      try {
-        res.json(configService.savePromptFile(req.body.file, req.body.data));
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
     getConfig(req, res) {
       try {
         res.json({ lines: configService.getConfigLines() });
@@ -81,62 +41,6 @@ module.exports = function createConfigController(configService) {
     updateConfig(req, res) {
       try {
         res.json(configService.updateConfig(req.body.key, req.body.value));
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
-    getAiAuthStatus(req, res) {
-      try {
-        res.json(configService.getAiAuthStatus());
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
-    setAiAuthMode(req, res) {
-      try {
-        res.json(configService.setAiAuthMode(req.body?.mode));
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
-    async saveGoogleSession(req, res) {
-      try {
-        res.json(await configService.saveGoogleSession(req.body || {}));
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
-    clearGoogleSession(req, res) {
-      try {
-        res.json(configService.clearGoogleSession());
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
-    async testGoogleOauth(req, res) {
-      try {
-        res.json(await configService.testGoogleOauth(req.body || {}));
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
-    getAutoReply(req, res) {
-      try {
-        res.json(configService.getAutoReply());
-      } catch (error) {
-        sendError(res, error);
-      }
-    },
-
-    async setAutoReply(req, res) {
-      try {
-        res.json(await configService.setAutoReply(req.body?.enabled));
       } catch (error) {
         sendError(res, error);
       }

@@ -104,7 +104,6 @@ socket.on('init', (data) => {
   updateUsers(data.activeUsers);
   if (data.qrCode) showQR(data.qrCode);
   if (data.verifierQrCode) showVerifierQR(data.verifierQrCode);
-  if (data.autoReply !== undefined) setAutoReplyUI(data.autoReply);
   if (data.aiAuth) renderGoogleAiAuth(data.aiAuth);
   if (!campaignPresetLoaded) loadCampaignPreset();
   if (!parsedContacts.length) restoreCampaignParsedState();
@@ -113,7 +112,6 @@ socket.on('init', (data) => {
   if (!emailPresetLoaded) loadEmailPreset();
 });
 
-socket.on('autoreply', setAutoReplyUI);
 socket.on('ai_auth_status', renderGoogleAiAuth);
 
 socket.on('log', addLogEntry);
@@ -407,7 +405,6 @@ function updateStatus(status) {
   }
   document.getElementById('btn-stop').disabled = status === 'stopped';
   if (status !== 'qr') document.getElementById('qr-container').style.display = 'none';
-  updateUnreadScanUI();
 }
 
 function animateStat(id, value) {
@@ -822,79 +819,6 @@ function botLogout() {
   });
 }
 
-function scanUnreadMessages() {
-  const btn = document.getElementById('btn-scan-unread');
-  const desc = document.getElementById('unread-scan-desc');
-  if (btn) {
-    btn.dataset.loading = '1';
-    btn.disabled = true;
-    btn.textContent = 'Scanning...';
-  }
-  if (desc) {
-    desc.textContent = 'Unread messages scan ho raha hai. Milne wale chats queue me jayenge.';
-  }
-
-  fetch('/api/bot/scan-unread', { method: 'POST' })
-    .then(async (response) => {
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.msg || data.error || 'Unread scan failed');
-      toast(data.msg || 'Unread scan completed');
-    })
-    .catch((error) => {
-      toast(error.message || 'Unread scan failed');
-    })
-    .finally(() => {
-      if (!btn) return;
-      delete btn.dataset.loading;
-      btn.disabled = false;
-      btn.textContent = 'Scan Unread Now';
-      updateUnreadScanUI();
-    });
-}
-
-function updateUnreadScanUI() {
-  const btn = document.getElementById('btn-scan-unread');
-  const desc = document.getElementById('unread-scan-desc');
-  const autoReplyEnabled = !!document.getElementById('autoreply-toggle')?.checked;
-  const isReady = botStatus === 'ready';
-  const isLoading = btn?.dataset.loading === '1';
-
-  if (desc && !isLoading) {
-    if (!isReady) {
-      desc.textContent = 'Pehle WhatsApp Connect karo. Bot ready hone ke baad unread messages scan kar sakte ho.';
-    } else if (!autoReplyEnabled) {
-      desc.textContent = 'Unread scan tab reply queue start karega jab Auto Reply ON hoga.';
-    } else {
-      desc.textContent = 'Unread WhatsApp messages ko scan karega aur Auto Reply ON hone par unko queue me dal kar one-by-one reply start karega.';
-    }
-  }
-
-  if (btn && !isLoading) {
-    btn.disabled = !isReady;
-  }
-}
-
-// --- Auto Reply Toggle -------------------------------------------------------
-function setAutoReplyUI(enabled) {
-  document.getElementById('autoreply-toggle').checked = enabled;
-  document.getElementById('autoreply-slider').style.background = enabled ? 'var(--green)' : 'var(--border)';
-  document.getElementById('autoreply-knob').style.left = enabled ? '25px' : '3px';
-  document.getElementById('autoreply-desc').textContent = enabled
-    ? 'ON - Replies enabled'
-    : 'OFF - Replies disabled';
-  updateUnreadScanUI();
-}
-
-function toggleAutoReply(enabled) {
-  fetch('/api/autoreply', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled })
-  }).then(r => r.json()).then(d => {
-    setAutoReplyUI(d.enabled);
-    toast(d.enabled ? 'Auto Reply ON' : 'Auto Reply OFF');
-  });
-}
-
 // --- Bulk Campaign ------------------------------------------------------------
 let parsedContacts = [], fileHeaders = [], activeCampaignId = null, campaignImageData = null;
 let campaignPresetLoaded = false;
@@ -1051,7 +975,7 @@ function applyCampaignProgress(d) {
   if (d.status && d.status.startsWith('break_')) {
     document.getElementById('prog-status').textContent = `Anti-ban break: ${d.status.replace('break_', '')} pause...`;
   } else if (d.status === 'paused') {
-    document.getElementById('prog-status').textContent = 'Paused - handling incoming reply...';
+    document.getElementById('prog-status').textContent = 'Paused...';
   } else {
     document.getElementById('prog-status').textContent = 'Running...';
   }

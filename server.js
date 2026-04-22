@@ -4,17 +4,9 @@ const { Server } = require("socket.io");
 const fs = require("fs");
 const path = require("path");
 const {
-  getGoogleOauthPublicState,
-  isGoogleOauthSessionValid,
-} = require("./src/services/gemini-oauth.service");
-const {
   createInitialState,
   createEmptyMessageStats,
 } = require("./src/models/app-state.model");
-const {
-  loadRuntimeState,
-  saveRuntimeState,
-} = require("./src/models/runtime-state.model");
 const registerRoutes = require("./src/routes");
 require("dotenv").config();
 
@@ -26,8 +18,7 @@ app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 app.use(express.static("public"));
 
-const persistedRuntimeState = loadRuntimeState();
-const state = createInitialState(persistedRuntimeState);
+const state = createInitialState();
 
 function applyUsageStats(stats, modelName, timestamp = "") {
   const model = String(modelName || "").trim();
@@ -40,23 +31,10 @@ function applyUsageStats(stats, modelName, timestamp = "") {
   }
   if (lower.includes("gemini")) {
     stats.gemini = (stats.gemini || 0) + 1;
-  }
-  if (lower.includes("openai")) {
-    stats.openai = (stats.openai || 0) + 1;
-  }
-
-  const isGoogleOauth =
-    lower.includes("oauth") || lower.includes("google login");
-  const isApiBacked = lower.includes("gemini") || lower.includes("openai");
-  if (isGoogleOauth) {
-    stats.googleOauth = (stats.googleOauth || 0) + 1;
-  } else if (isApiBacked) {
     stats.api = (stats.api || 0) + 1;
   }
 }
 
-state.persistRuntimeState = () => saveRuntimeState(state);
-state.getAiAuthStatus = () => getGoogleOauthPublicState(state);
 state.recordAiUsageStats = (modelName, timestamp = new Date().toISOString()) => {
   applyUsageStats(state.messageStats, modelName, timestamp);
   io.emit("stats", state.messageStats);
@@ -78,13 +56,6 @@ function addLog(level, message) {
   state.logs.push(entry);
   if (state.logs.length > 500) state.logs.shift();
   io.emit("log", entry);
-}
-
-if (isGoogleOauthSessionValid(state.aiAuth.googleOauth)) {
-  addLog(
-    "info",
-    `Restored Google OAuth session${state.aiAuth.googleOauth.email ? ` for ${state.aiAuth.googleOauth.email}` : ""}.`,
-  );
 }
 
 function loadUsageLogs() {
@@ -124,10 +95,6 @@ function buildSocketInitPayload() {
       ...user,
     })),
     qrCode: state.qrCode,
-    botVerifierStatus: state.botVerifierStatus,
-    verifierQrCode: state.verifierQrCode,
-    autoReply: state.autoReply,
-    aiAuth: state.getAiAuthStatus(),
   };
 }
 
