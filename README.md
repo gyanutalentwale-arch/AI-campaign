@@ -42,6 +42,18 @@ This project is now Azure-ready with:
 - persistent runtime storage support (`APP_DATA_DIR`, default `/home/site/data` on Azure)
 - Puppeteer + Chromium compatible Docker runtime
 
+### Fastest way (recommended)
+
+```powershell
+az login --use-device-code
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy-azure.ps1 -ResourceGroup <resourceGroup> -AppName <uniqueAppName>
+```
+
+Notes:
+- Script auto-creates ACR + App Service plan + Web App + image build + app settings.
+- By default it reads values from `.env` and applies only non-placeholder keys.
+- Optional flags: `-SubscriptionId`, `-Location`, `-PlanName`, `-AcrName`, `-Sku`, `-ImageTag`.
+
 ### 1) Build and push image to ACR
 
 ```bash
