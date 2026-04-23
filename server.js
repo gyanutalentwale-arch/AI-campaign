@@ -4,19 +4,29 @@ const { Server } = require("socket.io");
 const fs = require("fs");
 const path = require("path");
 const {
+  appDataDir,
+  ensureRuntimeStorage,
+  resolveRuntimePath,
+} = require("./src/utils/runtime-paths");
+const {
   createInitialState,
   createEmptyMessageStats,
 } = require("./src/models/app-state.model");
 const registerRoutes = require("./src/routes");
 require("dotenv").config();
 
+ensureRuntimeStorage();
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
+const BOT_USAGE_LOG_PATH = resolveRuntimePath("bot_usage.log", {
+  migrateFromCwd: true,
+});
 
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
-app.use(express.static("public"));
+app.use(express.static(path.join(__dirname, "public")));
 
 const state = createInitialState();
 
@@ -60,7 +70,7 @@ function addLog(level, message) {
 
 function loadUsageLogs() {
   try {
-    const raw = fs.readFileSync("bot_usage.log", "utf8");
+    const raw = fs.readFileSync(BOT_USAGE_LOG_PATH, "utf8");
     const lines = raw.trim().split("\n").filter(Boolean);
     Object.assign(state.messageStats, createEmptyMessageStats());
     lines.forEach((line) => {
@@ -80,7 +90,7 @@ function recordModelCallUsage(modelName, source = "system") {
   const model = String(modelName || "").trim() || "unknown-model";
   const actor = String(source || "system").trim() || "system";
   const logEntry = `[${timestamp}] User: ${actor} | Model: ${model} | Msg: "__ai_call__"\n`;
-  fs.appendFile("bot_usage.log", logEntry, () => {});
+  fs.appendFile(BOT_USAGE_LOG_PATH, logEntry, () => {});
   state.recordAiUsageStats(model, timestamp);
 }
 
@@ -103,6 +113,8 @@ registerRoutes({
   addLog,
   path,
   fs,
+  appDataDir,
+  resolveRuntimePath,
   recordModelCallUsage,
 });
 

@@ -1,21 +1,38 @@
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const QRCode = require("qrcode");
+const fs = require("fs");
+const { resolveRuntimePath } = require("../utils/runtime-paths");
 
 module.exports = function createWhatsAppRuntime({ io, state, addLog }) {
+  const sessionDataPath = resolveRuntimePath("whatsapp_session");
+  const webCachePath = resolveRuntimePath(".wwebjs_cache");
+  const chromiumPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  const hasCustomChromium = chromiumPath && fs.existsSync(chromiumPath);
+
+  const puppeteerConfig = {
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+    ],
+  };
+
+  if (hasCustomChromium) {
+    puppeteerConfig.executablePath = chromiumPath;
+  }
+
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: "client-one",
-      dataPath: "./whatsapp_session",
+      dataPath: sessionDataPath,
     }),
-    puppeteer: {
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-      ],
+    webVersionCache: {
+      type: "local",
+      path: webCachePath,
     },
+    puppeteer: puppeteerConfig,
   });
 
   function setStatus(status) {
@@ -85,6 +102,7 @@ module.exports = function createWhatsAppRuntime({ io, state, addLog }) {
     "info",
     "Inbound auto-reply flow is disabled. Sender account is used for campaigns and verification.",
   );
+  addLog("info", `WhatsApp session storage: ${sessionDataPath}`);
 
   setStatus("stopped");
 

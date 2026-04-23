@@ -10,6 +10,7 @@ module.exports = function createBotControlService({
   addLog,
   path,
   fs,
+  resolveRuntimePath,
 }) {
   function setBotStatus(status) {
     state.botStatus = status;
@@ -75,7 +76,10 @@ module.exports = function createBotControlService({
       } catch (_) {}
     }
 
-    const sessionPath = path.join(process.cwd(), "whatsapp_session");
+    const sessionPath =
+      typeof resolveRuntimePath === "function"
+        ? resolveRuntimePath("whatsapp_session")
+        : path.join(process.cwd(), "whatsapp_session");
     if (fs.existsSync(sessionPath)) {
       fs.rmSync(sessionPath, { recursive: true, force: true });
       addLog("info", "Session data cleared");

@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log*
+.git
+.gitignore
+.env
+.env.*
+whatsapp_session
+.wwebjs_cache
+.wwebjs_auth
+bot_usage.log
+*_preset.json
+*_usage_state.json

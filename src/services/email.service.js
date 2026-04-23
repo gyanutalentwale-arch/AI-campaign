@@ -8,14 +8,18 @@ module.exports = function createEmailService({
   addLog,
   path,
   fs,
+  resolveRuntimePath,
 }) {
   const emailCampaigns = new Map();
   const mxCache = new Map();
-  const EMAIL_PRESET_PATH = path.join(process.cwd(), "email_preset.json");
-  const EMAIL_USAGE_STATE_PATH = path.join(
-    process.cwd(),
-    "email_usage_state.json",
-  );
+  const EMAIL_PRESET_PATH =
+    typeof resolveRuntimePath === "function"
+      ? resolveRuntimePath("email_preset.json", { migrateFromCwd: true })
+      : path.join(process.cwd(), "email_preset.json");
+  const EMAIL_USAGE_STATE_PATH =
+    typeof resolveRuntimePath === "function"
+      ? resolveRuntimePath("email_usage_state.json", { migrateFromCwd: true })
+      : path.join(process.cwd(), "email_usage_state.json");
   const DEFAULT_EMAIL_PRESET = {
     subject: "",
     template: "",

@@ -8,10 +8,14 @@ module.exports = function createCampaignService({
   addLog,
   path,
   fs,
+  resolveRuntimePath,
   recordModelCallUsage = () => {},
 }) {
 const campaigns = new Map();
-const CAMPAIGN_PRESET_PATH = path.join(process.cwd(), "campaign_preset.json");
+const CAMPAIGN_PRESET_PATH =
+  typeof resolveRuntimePath === "function"
+    ? resolveRuntimePath("campaign_preset.json", { migrateFromCwd: true })
+    : path.join(process.cwd(), "campaign_preset.json");
 const MAX_REAL_FAILURES_BEFORE_STOP = 3;
 const DEFAULT_CAMPAIGN_PRESET = {
   template: "",
