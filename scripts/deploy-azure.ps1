@@ -177,7 +177,14 @@ function Ensure-WebApp {
   }
 
   if (-not $exists) {
-    Invoke-Az @("webapp", "create", "--name", $Name, "--resource-group", $ResourceGroup, "--plan", $Plan, "--runtime", "NODE|20-lts", "--output", "none")
+    Invoke-Az @(
+      "webapp", "create",
+      "--name", $Name,
+      "--resource-group", $ResourceGroup,
+      "--plan", $Plan,
+      "--deployment-container-image-name", "mcr.microsoft.com/azuredocs/aci-helloworld",
+      "--output", "none"
+    )
   }
 }
 
