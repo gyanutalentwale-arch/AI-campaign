@@ -1,0 +1,46 @@
+name: Deploy Node.js Web App to Azure Container Registry
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  ACR_LOGIN_SERVER: "wpbottestacr202604.azurecr.io"
+  ACR_USERNAME: "wpbottestacr202604"
+  IMAGE_NAME: "wpbot"
+  AZURE_WEBAPP_NAME: "wp-bot-web-app-591" # Will update once checked but based on the script it is dynamically generated
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.ACR_LOGIN_SERVER }}
+          username: ${{ env.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push container image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Log in to Azure CLI
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Restart Azure Web App
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            az webapp restart --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group wp-bot-rg
