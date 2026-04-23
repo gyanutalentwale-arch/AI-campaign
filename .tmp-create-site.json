@@ -1,0 +1,12 @@
+{
+    "properties":  {
+                       "siteConfig":  {
+                                          "alwaysOn":  true,
+                                          "linuxFxVersion":  "NODE|20-lts",
+                                          "webSocketsEnabled":  true
+                                      },
+                       "serverFarmId":  "/subscriptions/4b6bd4ac-8b54-4668-a5f1-ab151c18cf23/resourceGroups/rg-wpbot-prod/providers/Microsoft.Web/serverfarms/plan-wpbot-gyanu-202604232104419"
+                   },
+    "location":  "centralindia",
+    "kind":  "app,linux"
+}
